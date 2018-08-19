@@ -1,0 +1,7 @@
+[package]
+name = "yarlox"
+version = "0.1.0"
+authors = ["Brian Gavin <bgavin1996@gmail.com>"]
+
+[dependencies]
+lazy_static = "1.1.0"

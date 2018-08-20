@@ -1,5 +1,4 @@
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -77,7 +76,7 @@ impl TokenBuilder {
             ttype: TokenType::EOF,
             lexeme: String::new(),
             literal: String::new(),
-            line: 1
+            line: 1,
         }
     }
 
@@ -116,7 +115,7 @@ impl TokenBuilder {
             ttype: self.ttype,
             lexeme: self.lexeme,
             literal: self.literal,
-            line: self.line
+            line: self.line,
         }
     }
 }

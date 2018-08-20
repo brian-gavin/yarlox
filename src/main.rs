@@ -1,6 +1,6 @@
 extern crate yarlox;
 
-use {yarlox::run_file, yarlox::run_prompt, std::env};
+use {std::env, yarlox::run_file, yarlox::run_prompt};
 
 fn main() {
     let in_file = env::args().skip(1).next();

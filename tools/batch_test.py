@@ -35,4 +35,5 @@ def report(path, completed_process):
         print(completed_process.stderr, file=outfile)
 
 
-run_every_test('lox_test')
+if __name__ == '__main__':
+    run_every_test('lox_test')

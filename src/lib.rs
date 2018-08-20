@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod expr;
 mod scanner;
 mod token;
 
@@ -67,13 +68,11 @@ pub fn run_prompt() -> Result<(), io::Error> {
 fn run(source: String) {
     match run_err(source) {
         Ok(_) => (),
-        Err(e) => report_exit(e)
+        Err(e) => report_exit(e),
     }
 }
 
 fn run_err(source: String) -> Result<(), ParseError> {
-    Scanner::new(&source).for_each(|tok| {
-        println!("{:?}", tok)
-    });
+    Scanner::new(&source).for_each(|tok| println!("{:?}", tok));
     Ok(())
 }

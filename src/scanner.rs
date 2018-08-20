@@ -68,7 +68,7 @@ impl<'a> Scanner<'a> {
             ' ' | '\r' | '\t' => true,
             '\n' => {
                 self.line += 1;
-               true 
+                true
             }
             _ => false,
         };

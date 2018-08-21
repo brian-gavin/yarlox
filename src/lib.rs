@@ -1,11 +1,15 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod ast_printer;
 mod expr;
+mod parser;
 mod scanner;
 mod token;
+mod visit;
 
 use {
+    ast_printer::Printer,
     scanner::Scanner,
     std::fmt,
     std::fs,
@@ -26,6 +30,12 @@ impl fmt::Display for ParseError {
     }
 }
 
+impl fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
 impl ParseError {
     pub fn new(line: u32, e_type: String, msg: String) -> ParseError {
         ParseError {
@@ -37,6 +47,10 @@ impl ParseError {
 
     pub fn report(&self) {
         eprintln!("{}", self);
+    }
+
+    pub fn message(&self) -> String {
+        format!("{}", self)
     }
 }
 
@@ -73,6 +87,6 @@ fn run(source: String) {
 }
 
 fn run_err(source: String) -> Result<(), ParseError> {
-    Scanner::new(&source).for_each(|tok| println!("{:?}", tok));
+    Scanner::new(&source).parser().parse().print();
     Ok(())
 }

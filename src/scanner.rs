@@ -1,4 +1,5 @@
 use {
+    parser::Parser,
     report_exit,
     std::collections::{HashMap, VecDeque},
     std::str::Chars,
@@ -47,6 +48,10 @@ impl<'a> Scanner<'a> {
             line: 1,
             eof: false,
         }
+    }
+
+    pub fn parser(self) -> Parser {
+        Parser::new(self)
     }
 
     fn basic_token(&self, ttype: TokenType, lexeme: &'static str) -> Token {

@@ -6,6 +6,34 @@ use {
     ParseError,
 };
 
+/// Macro to define a left associative binary expression
+/// Pass in a handle to the parser's `self`, the method name of the
+/// non-terminal which has higher precedence, and coma separated `TokenType`s that
+/// this expression uses
+macro_rules! left_associative_binary_expr {
+    ($self:ident, $higher_prec:ident, $($matching:pat),+ ) => {{
+        let mut expr = $self.$higher_prec()?;
+        while match $self.peek().ttype {
+            $(
+                $matching => {
+                    $self.advance();
+                    true
+                },
+            )+
+            _ => false,
+        } {
+            let op = $self.previous().clone();
+            let right = Box::new($self.$higher_prec()?);
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+            };
+        }
+        Ok(expr)
+    }};
+}
+
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
@@ -28,83 +56,19 @@ impl Parser {
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.comparison()?;
-        while match self.peek().ttype {
-            BangEqual | EqualEqual => {
-                self.advance();
-                true
-            }
-            _ => false,
-        } {
-            let op = self.previous().clone();
-            let right = Box::new(self.comparison()?);
-            expr = Expr::Binary {
-                left: Box::new(expr),
-                op,
-                right,
-            };
-        }
-        Ok(expr)
+        left_associative_binary_expr!(self, comparison, BangEqual, EqualEqual)
     }
 
     fn comparison(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.addition()?;
-        while match self.peek().ttype {
-            Greater | GreaterEqual | Less | LessEqual => {
-                self.advance();
-                true
-            }
-            _ => false,
-        } {
-            let op = self.previous().clone();
-            let right = Box::new(self.addition()?);
-            expr = Expr::Binary {
-                left: Box::new(expr),
-                op,
-                right,
-            };
-        }
-        Ok(expr)
+        left_associative_binary_expr!(self, addition, Greater, GreaterEqual, Less, LessEqual)
     }
 
     fn addition(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.multiplication()?;
-        while match self.peek().ttype {
-            Plus | Minus => {
-                self.advance();
-                true
-            }
-            _ => false,
-        } {
-            let op = self.previous().clone();
-            let right = Box::new(self.multiplication()?);
-            expr = Expr::Binary {
-                left: Box::new(expr),
-                op,
-                right,
-            };
-        }
-        Ok(expr)
+        left_associative_binary_expr!(self, multiplication, Plus, Minus)
     }
 
     fn multiplication(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.unary()?;
-        while match self.peek().ttype {
-            Star | Slash => {
-                self.advance();
-                true
-            }
-            _ => false,
-        } {
-            let op = self.previous().clone();
-            let right = Box::new(self.unary()?);
-            expr = Expr::Binary {
-                left: Box::new(expr),
-                op,
-                right,
-            }
-        }
-        Ok(expr)
+        left_associative_binary_expr!(self, unary, Star, Slash)
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {

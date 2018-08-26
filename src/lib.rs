@@ -9,7 +9,6 @@ mod token;
 mod visit;
 
 use {
-    ast_printer::Printer,
     scanner::Scanner,
     std::fmt,
     std::fs,
@@ -52,6 +51,10 @@ impl ParseError {
     pub fn message(&self) -> String {
         format!("{}", self)
     }
+
+    pub fn report_exit(self) -> ! {
+        report_exit(self)
+    }
 }
 
 pub fn report_exit(e: ParseError) -> ! {
@@ -63,8 +66,10 @@ pub fn run_file(file_name: &str) -> Result<(), io::Error> {
     let mut file = fs::File::open(file_name)?;
     let mut source = String::new();
     file.read_to_string(&mut source)?;
-    run(source);
-    Ok(())
+    match run(source) {
+        Err(error) => error.report_exit(),
+        Ok(ok) => Ok(ok),
+    }
 }
 
 pub fn run_prompt() -> Result<(), io::Error> {
@@ -73,20 +78,16 @@ pub fn run_prompt() -> Result<(), io::Error> {
         let mut source = String::new();
         match handle.lock().read_line(&mut source)? {
             0 => break,
-            _ => run(source),
+            _ => match run(source) {
+                Err(error) => error.report(),
+                _ => (),
+            },
         }
     }
     Ok(())
 }
 
-fn run(source: String) {
-    match run_err(source) {
-        Ok(_) => (),
-        Err(e) => report_exit(e),
-    }
-}
-
-fn run_err(source: String) -> Result<(), ParseError> {
-    Scanner::new(&source).parser().parse().print();
+fn run(source: String) -> Result<(), ParseError> {
+    Scanner::new(&source).parser()?.parse().print();
     Ok(())
 }

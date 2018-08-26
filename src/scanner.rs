@@ -38,6 +38,7 @@ pub struct Scanner<'a> {
     peeks: VecDeque<char>,
     line: u32,
     eof: bool,
+    had_error: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -47,10 +48,11 @@ impl<'a> Scanner<'a> {
             peeks: VecDeque::with_capacity(LOOKAHEAD),
             line: 1,
             eof: false,
+            had_error: false,
         }
     }
 
-    pub fn parser(self) -> Parser {
+    pub fn parser(self) -> Result<Parser, ParseError> {
         Parser::new(self)
     }
 
@@ -63,10 +65,11 @@ impl<'a> Scanner<'a> {
             .finalize()
     }
 
-    fn next_token(&mut self, c: Option<char>) -> Token {
+    fn next_token(&mut self, c: Option<char>) -> Result<Token, ParseError> {
         if c.is_none() {
             self.eof = true;
-            return Token::build().ttype(EOF).line(self.line).finalize();
+            let eof_token = Token::build().ttype(EOF).line(self.line).finalize();
+            return Ok(eof_token);
         }
         let c = c.unwrap();
         let skip = match c {
@@ -79,10 +82,10 @@ impl<'a> Scanner<'a> {
         };
         if skip {
             let advance = self.advance();
-            return self.next_token(advance);
+            return Ok(self.next_token(advance)?);
         }
 
-        match c {
+        let next_token = match c {
             '(' => self.basic_token(LeftParen, "("),
             ')' => self.basic_token(RightParen, ")"),
             '{' => self.basic_token(LeftBrace, "{"),
@@ -93,25 +96,21 @@ impl<'a> Scanner<'a> {
             '+' => self.basic_token(Plus, "+"),
             ';' => self.basic_token(Semicolon, ";"),
             '*' => self.basic_token(Star, "*"),
-            '!' | '=' | '<' | '>' => self.comparison_bang_or_equal(c),
+            '!' | '=' | '<' | '>' => self.comparison_bang_or_equal(c)?,
             '/' => {
                 if let Some(token) = self.comment_or_slash() {
                     token
                 } else {
                     let advance = self.advance();
-                    self.next_token(advance)
+                    self.next_token(advance)?
                 }
             }
-            '"' => self.string(),
+            '"' => self.string()?,
             '0'...'9' => self.number(c),
-            _ => {
-                if c.is_alphabetic() || c == '_' {
-                    self.ident(c)
-                } else {
-                    report_exit(self.unexpected_character(c));
-                }
-            }
-        }
+            _ => self.ident(c)?,
+        };
+
+        Ok(next_token)
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -157,33 +156,33 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn comparison_bang_or_equal(&mut self, c: char) -> Token {
+    fn comparison_bang_or_equal(&mut self, c: char) -> Result<Token, ParseError> {
         match (c, self.peek(1)) {
             ('!', Some('=')) => {
                 self.advance();
-                self.basic_token(BangEqual, "!=")
+                Ok(self.basic_token(BangEqual, "!="))
             }
             ('=', Some('=')) => {
                 self.advance();
-                self.basic_token(EqualEqual, "==")
+                Ok(self.basic_token(EqualEqual, "=="))
             }
             ('<', Some('=')) => {
                 self.advance();
-                self.basic_token(LessEqual, "<=")
+                Ok(self.basic_token(LessEqual, "<="))
             }
             ('>', Some('=')) => {
                 self.advance();
-                self.basic_token(GreaterEqual, ">=")
+                Ok(self.basic_token(GreaterEqual, ">="))
             }
-            ('!', _) => self.basic_token(Bang, "!"),
-            ('=', _) => self.basic_token(Equal, "="),
-            ('<', _) => self.basic_token(Less, "<"),
-            ('>', _) => self.basic_token(Greater, ">"),
-            (_, _) => report_exit(self.unexpected_character(c)),
+            ('!', _) => Ok(self.basic_token(Bang, "!")),
+            ('=', _) => Ok(self.basic_token(Equal, "=")),
+            ('<', _) => Ok(self.basic_token(Less, "<")),
+            ('>', _) => Ok(self.basic_token(Greater, ">")),
+            (_, _) => Err(self.unexpected_character(c)),
         }
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Result<Token, ParseError> {
         let mut lexeme = String::new();
         lexeme.push('"');
         while let Some(c) = self.advance() {
@@ -203,14 +202,15 @@ impl<'a> Scanner<'a> {
         // terminated means that we didn't hit EOF
         let terminated = self.peek(1).is_some();
         if terminated {
-            Token::build()
+            let tok = Token::build()
                 .ttype(StringLit)
                 .lexeme(lexeme)
                 .line(self.line)
                 .literal(literal)
-                .finalize()
+                .finalize();
+            Ok(tok)
         } else {
-            report_exit(self.error("".to_string(), "Unterminated string".to_string()))
+            Err(self.error("".to_string(), "Unterminated string".to_string()))
         }
     }
 
@@ -249,7 +249,10 @@ impl<'a> Scanner<'a> {
             .finalize()
     }
 
-    fn ident(&mut self, first: char) -> Token {
+    fn ident(&mut self, first: char) -> Result<Token, ParseError> {
+        if !first.is_alphanumeric() && first != '_' {
+            return Err(self.unexpected_character(first));
+        }
         let mut lexeme = String::from(first.to_string());
 
         while let Some(c) = self.peek(1) {
@@ -270,7 +273,7 @@ impl<'a> Scanner<'a> {
         } else {
             token_builder = token_builder.ttype(Ident);
         }
-        token_builder.finalize()
+        Ok(token_builder.finalize())
     }
 
     fn error(&self, e_type: String, msg: String) -> ParseError {
@@ -287,14 +290,18 @@ impl<'a> Scanner<'a> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Token;
+    type Item = Result<Token, ParseError>;
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<Result<Token, ParseError>> {
         if self.eof {
+            None
+        } else if self.had_error {
             None
         } else {
             let advance = self.advance();
-            Some(self.next_token(advance))
+            let next_token = self.next_token(advance);
+            self.had_error = next_token.is_err();
+            Some(next_token)
         }
     }
 }

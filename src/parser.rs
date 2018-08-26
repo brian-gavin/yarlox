@@ -40,10 +40,23 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(scanner: Scanner) -> Parser {
-        Parser {
-            tokens: scanner.collect(),
-            current: 0,
+    pub fn new(scanner: Scanner) -> Result<Parser, ParseError> {
+        let mut scan_had_error = false;
+        let mut error: Option<ParseError> = None;
+        let tokens = scanner
+            .filter_map(|result| match result {
+                Ok(token) => Some(token),
+                Err(err) => {
+                    scan_had_error = true;
+                    error = Some(err);
+                    None
+                }
+            })
+            .collect();
+        if scan_had_error {
+            Err(error.unwrap())
+        } else {
+            Ok(Parser { tokens, current: 0 })
         }
     }
 
@@ -152,7 +165,7 @@ impl Parser {
             self.current += 1;
         }
         let rv = self.previous();
-        eprintln!("{:?}", *rv);
+        eprintln!("advance to: {:?}", *rv);
         rv
         // self.previous()
     }

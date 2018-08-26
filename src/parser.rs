@@ -1,7 +1,7 @@
 use {
     expr::Expr,
-    std::f64,
     scanner::Scanner,
+    std::f64,
     token::{Token, TokenType, TokenType::*},
     ParseError,
 };
@@ -114,7 +114,7 @@ impl Parser {
                 self.advance();
                 let number = match self.previous().literal.parse::<f64>() {
                     Ok(n) => n,
-                    Err(e) => return Err(self.error(self.previous(), e.to_string().as_str()))
+                    Err(e) => return Err(self.error(self.previous(), e.to_string().as_str())),
                 };
                 Expr::NumberLiteral(number)
             }
@@ -130,7 +130,7 @@ impl Parser {
             }
             _ => {
                 let peeked = self.peek();
-                return Err(self.error(peeked, "Expected an expression."))
+                return Err(self.error(peeked, "Expected an expression."));
             }
         })
     }

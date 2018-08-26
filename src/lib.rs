@@ -3,18 +3,21 @@ extern crate lazy_static;
 
 mod ast_printer;
 mod expr;
+mod interpreter;
 mod parser;
 mod scanner;
 mod token;
+mod types;
 mod visit;
 
 use {
     scanner::Scanner,
-    std::fmt,
-    std::fs,
-    std::io,
-    std::io::{BufRead, Read},
-    std::process,
+    std::{
+        error::Error,
+        fmt, fs, io,
+        io::{BufRead, Read},
+        process,
+    },
 };
 
 pub struct ParseError {
@@ -34,6 +37,8 @@ impl fmt::Debug for ParseError {
         fmt::Display::fmt(self, f)
     }
 }
+
+impl Error for ParseError {}
 
 impl ParseError {
     pub fn new(line: u32, e_type: String, msg: String) -> ParseError {

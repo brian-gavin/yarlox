@@ -1,6 +1,6 @@
 use {
     expr::Expr,
-    std::{f64, str::FromStr},
+    std::f64,
     scanner::Scanner,
     token::{Token, TokenType, TokenType::*},
     ParseError,
@@ -112,7 +112,7 @@ impl Parser {
             }
             Number => {
                 self.advance();
-                let number = match f64::from_str(&self.previous().literal) {
+                let number = match self.previous().literal.parse::<f64>() {
                     Ok(n) => n,
                     Err(e) => return Err(self.error(self.previous(), e.to_string().as_str()))
                 };

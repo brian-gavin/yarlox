@@ -24,7 +24,7 @@ pub enum Expr {
 
 impl<T> Visitable<T> for Expr {
     fn accept(&self, visitor: &impl Visitor<T>) -> T {
-        visitor.visitExpr(self)
+        visitor.visit_expr(self)
     }
 }
 

@@ -8,7 +8,7 @@ pub struct Printer;
 
 impl Printer {
     pub fn print(&self, expr: &Expr) -> String {
-        self.visitExpr(expr)
+        self.visit_expr(expr)
     }
 
     fn parenthize(&self, name: &str, exprs: Vec<&Expr>) -> String {
@@ -25,7 +25,7 @@ impl Printer {
 }
 
 impl Visitor<String> for Printer {
-    fn visitExpr(&self, expr: &Expr) -> String {
+    fn visit_expr(&self, expr: &Expr) -> String {
         match expr {
             NilLiteral => "nil".to_string(),
             NumberLiteral(n) => n.to_string(),

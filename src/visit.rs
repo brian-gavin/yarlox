@@ -1,7 +1,7 @@
 use expr::Expr;
 
 pub trait Visitor<T> {
-    fn visitExpr(&self, expr: &Expr) -> T;
+    fn visit_expr(&self, expr: &Expr) -> T;
 }
 
 pub trait Visitable<T> {

@@ -1,6 +1,6 @@
 use {
     expr::Expr,
-    report_exit,
+    std::{f64, str::FromStr},
     scanner::Scanner,
     token::{Token, TokenType, TokenType::*},
     ParseError,
@@ -110,7 +110,15 @@ impl Parser {
                 self.advance();
                 Expr::NilLiteral
             }
-            Number | StringLit => {
+            Number => {
+                self.advance();
+                let number = match f64::from_str(&self.previous().literal) {
+                    Ok(n) => n,
+                    Err(e) => return Err(self.error(self.previous(), e.to_string().as_str()))
+                };
+                Expr::NumberLiteral(number)
+            }
+            StringLit => {
                 self.advance();
                 Expr::StringLiteral(self.previous().literal.clone())
             }
@@ -122,7 +130,7 @@ impl Parser {
             }
             _ => {
                 let peeked = self.peek();
-                report_exit(self.error(peeked, "Expected an expression."))
+                return Err(self.error(peeked, "Expected an expression."))
             }
         })
     }

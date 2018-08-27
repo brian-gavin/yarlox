@@ -20,6 +20,25 @@ use {
     },
 };
 
+trait LoxError
+where
+    Self: Error + Sized,
+{
+    fn report(&self) {
+        eprintln!("{}", self);
+    }
+
+    fn message(&self) -> String {
+        format!("{}", self)
+    }
+
+    fn report_exit(self) -> ! {
+        self.report();
+        process::exit(0)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ParseError {
     line: u32,
     e_type: String,
@@ -32,13 +51,9 @@ impl fmt::Display for ParseError {
     }
 }
 
-impl fmt::Debug for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
 impl Error for ParseError {}
+
+impl LoxError for ParseError {}
 
 impl ParseError {
     pub fn new(line: u32, e_type: String, msg: String) -> ParseError {
@@ -48,24 +63,54 @@ impl ParseError {
             msg: msg,
         }
     }
+}
 
-    pub fn report(&self) {
-        eprintln!("{}", self);
-    }
+#[derive(Clone, Debug)]
+pub struct RuntimeError {
+    msg: String,
+    token: token::Token,
+}
 
-    pub fn message(&self) -> String {
-        format!("{}", self)
-    }
-
-    pub fn report_exit(self) -> ! {
-        report_exit(self)
+impl fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}] Runtime Error: {}", self.token.line, self.msg)
     }
 }
 
-pub fn report_exit(e: ParseError) -> ! {
-    e.report();
-    process::exit(0)
+impl Error for RuntimeError {}
+
+impl LoxError for RuntimeError {}
+
+#[derive(Debug)]
+enum LoxErrorUnion {
+    RuntimeError(RuntimeError),
+    ParseError(ParseError),
 }
+
+impl fmt::Display for LoxErrorUnion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LoxErrorUnion::RuntimeError(e) => write!(f, "{}", e),
+            LoxErrorUnion::ParseError(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl From<RuntimeError> for LoxErrorUnion {
+    fn from(e: RuntimeError) -> LoxErrorUnion {
+        LoxErrorUnion::RuntimeError(e)
+    }
+}
+
+impl From<ParseError> for LoxErrorUnion {
+    fn from(e: ParseError) -> LoxErrorUnion {
+        LoxErrorUnion::ParseError(e)
+    }
+}
+
+impl Error for LoxErrorUnion {}
+
+impl LoxError for LoxErrorUnion {}
 
 pub fn run_file(file_name: &str) -> Result<(), io::Error> {
     let mut file = fs::File::open(file_name)?;
@@ -92,7 +137,7 @@ pub fn run_prompt() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run(source: String) -> Result<(), ParseError> {
+fn run(source: String) -> Result<(), LoxErrorUnion> {
     Scanner::new(&source).parser()?.parse().print();
     Ok(())
 }

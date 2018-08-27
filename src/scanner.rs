@@ -1,6 +1,5 @@
 use {
     parser::Parser,
-    report_exit,
     std::collections::{HashMap, VecDeque},
     std::str::Chars,
     token::TokenType::*,
@@ -106,7 +105,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             '"' => self.string()?,
-            '0'...'9' => self.number(c),
+            '0'...'9' => self.number(c)?,
             _ => self.ident(c)?,
         };
 
@@ -214,7 +213,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn number(&mut self, first: char) -> Token {
+    fn number(&mut self, first: char) -> Result<Token, ParseError> {
         let mut lexeme = String::new();
         lexeme.push(first);
         while let Some(c) = self.peek(1) {
@@ -231,22 +230,24 @@ impl<'a> Scanner<'a> {
                             lexeme.push(c2);
                             self.advance();
                         }
-                        Some(_) | None => report_exit(self.error(
-                            "Invalid number".to_string(),
-                            "Expected digit after '.'".to_string(),
-                        )),
+                        Some(_) | None => {
+                            return Err(self.error(
+                                "Invalid number".to_string(),
+                                "Expected digit after '.'".to_string(),
+                            ))
+                        }
                     }
                 }
                 _ => break,
             }
         }
         let literal = lexeme.clone();
-        Token::build()
+        Ok(Token::build()
             .ttype(Number)
             .lexeme(lexeme)
             .literal(literal)
             .line(self.line)
-            .finalize()
+            .finalize())
     }
 
     fn ident(&mut self, first: char) -> Result<Token, ParseError> {

@@ -51,7 +51,13 @@ impl Interpreter {
 
         let res = match (left, op.ttype, right) {
             (Number(n1), Star, Number(n2)) => Number(n1 * n2),
-            (Number(n1), Slash, Number(n2)) => Number(n1 / n2),
+            (Number(n1), Slash, Number(n2)) => {
+                if n2 != 0.0 {
+                    Number(n1 / n2)
+                } else {
+                    return Err(self.error(op.clone(), "Divide by zero"));
+                }
+            }
             (Number(n1), Minus, Number(n2)) => Number(n1 - n2),
             (Number(n1), Plus, Number(n2)) => Number(n1 + n2),
             (LoxString(s), Plus, Number(n)) => LoxString(s + &n.to_string()),

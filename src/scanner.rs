@@ -149,7 +149,6 @@ impl<'a> Scanner<'a> {
                 None
             }
             _ => {
-                self.advance();
                 Some(self.basic_token(Slash, "/"))
             }
         }

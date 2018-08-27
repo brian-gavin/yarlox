@@ -11,9 +11,9 @@ mod types;
 mod visit;
 
 use {
-    scanner::Scanner,
-    parser::Parser,
     interpreter::Interpreter,
+    parser::Parser,
+    scanner::Scanner,
     std::{
         error::Error,
         fmt, fs, io,

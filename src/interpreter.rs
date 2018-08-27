@@ -54,6 +54,8 @@ impl Interpreter {
             (Number(n1), Slash, Number(n2)) => Number(n1 / n2),
             (Number(n1), Minus, Number(n2)) => Number(n1 - n2),
             (Number(n1), Plus, Number(n2)) => Number(n1 + n2),
+            (LoxString(s), Plus, Number(n)) => LoxString(s + &n.to_string()),
+            (Number(n), Plus, LoxString(s)) => LoxString(n.to_string() + &s),
             (LoxString(s1), Plus, LoxString(s2)) => LoxString(s1 + &s2),
             (Number(n1), Greater, Number(n2)) => Boolean(n1 > n2),
             (Number(n1), GreaterEqual, Number(n2)) => Boolean(n1 >= n2),

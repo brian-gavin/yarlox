@@ -9,6 +9,10 @@ use {
 pub struct Interpreter;
 
 impl Interpreter {
+    pub fn interpret(self, expr: &Expr) -> Result<(), RuntimeError> {
+        Ok(println!("{}", self.evaluate(expr)?.stringify()))
+    }
+
     fn evaluate(&self, expr: &Expr) -> Result<LoxType, RuntimeError> {
         expr.accept(self)
     }

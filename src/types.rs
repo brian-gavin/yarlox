@@ -13,6 +13,15 @@ impl LoxType {
             _ => true,
         }
     }
+
+    pub fn stringify(self) -> String {
+        match self {
+            LoxType::LoxString(s) => s,
+            LoxType::Number(n) => n.to_string(),
+            LoxType::Boolean(b) => b.to_string(),
+            LoxType::Nil => "nil".to_string(),
+        }
+    }
 }
 
 impl PartialEq for LoxType {

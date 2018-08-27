@@ -60,8 +60,8 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> Expr {
-        self.expression().unwrap()
+    pub fn parse(mut self) -> Result<Expr, ParseError> {
+        self.expression()
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {

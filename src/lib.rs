@@ -12,6 +12,8 @@ mod visit;
 
 use {
     scanner::Scanner,
+    parser::Parser,
+    interpreter::Interpreter,
     std::{
         error::Error,
         fmt, fs, io,
@@ -138,6 +140,8 @@ pub fn run_prompt() -> Result<(), io::Error> {
 }
 
 fn run(source: String) -> Result<(), LoxErrorUnion> {
-    Scanner::new(&source).parser()?.parse().print();
+    let scanner = Scanner::new(&source);
+    let ast = Parser::new(scanner)?.parse()?;
+    Interpreter.interpret(&ast)?;
     Ok(())
 }

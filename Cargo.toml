@@ -5,3 +5,5 @@ authors = ["Brian Gavin <bgavin1996@gmail.com>"]
 
 [dependencies]
 lazy_static = "1.1.0"
+log = "0.4"
+env_logger = "0.5"

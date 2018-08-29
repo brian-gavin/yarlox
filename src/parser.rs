@@ -173,7 +173,7 @@ impl Parser {
             self.current += 1;
         }
         let rv = self.previous();
-        eprintln!("advance to: {:?}", *rv);
+        debug!("advance to: {:?}", *rv);
         rv
         // self.previous()
     }

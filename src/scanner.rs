@@ -148,9 +148,7 @@ impl<'a> Scanner<'a> {
                 self.line += 1;
                 None
             }
-            _ => {
-                Some(self.basic_token(Slash, "/"))
-            }
+            _ => Some(self.basic_token(Slash, "/")),
         }
     }
 

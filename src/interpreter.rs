@@ -1,19 +1,29 @@
 use {
     expr::{Expr, Expr::*},
+    stmt::{Stmt, Stmt::*},
     token::Token,
     types::LoxType,
-    visit::{Visitable, Visitor},
+    visit::{expr, stmt},
     RuntimeError,
 };
 
 pub struct Interpreter;
 
 impl Interpreter {
-    pub fn interpret(self, expr: &Expr) -> Result<(), RuntimeError> {
-        Ok(println!("{}", self.evaluate(expr)?.stringify()))
+    pub fn interpret(self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
+        for stmt in stmts.iter() {
+            self.execute(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn execute(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+        use visit::stmt::Visitable;
+        stmt.accept(self)
     }
 
     fn evaluate(&self, expr: &Expr) -> Result<LoxType, RuntimeError> {
+        use visit::expr::Visitable;
         expr.accept(self)
     }
 
@@ -94,7 +104,7 @@ impl Interpreter {
     }
 }
 
-impl Visitor<Result<LoxType, RuntimeError>> for Interpreter {
+impl expr::Visitor<Result<LoxType, RuntimeError>> for Interpreter {
     fn visit_expr(&self, expr: &Expr) -> Result<LoxType, RuntimeError> {
         use types::LoxType::*;
 
@@ -109,5 +119,20 @@ impl Visitor<Result<LoxType, RuntimeError>> for Interpreter {
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
         };
         Ok(res)
+    }
+}
+
+impl stmt::Visitor<Result<(), RuntimeError>> for Interpreter {
+    fn visit_stmt(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+        match stmt {
+            Print(expr) => {
+                println!("{}", self.evaluate(expr)?.stringify());
+            }
+            Expression(expr) => {
+                self.evaluate(expr)?;
+            }
+        }
+
+        Ok(())
     }
 }

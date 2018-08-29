@@ -2,6 +2,7 @@ use {
     expr::Expr,
     scanner::Scanner,
     std::f64,
+    stmt::Stmt,
     token::{Token, TokenType, TokenType::*},
     ParseError,
 };
@@ -60,8 +61,39 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> Result<Expr, ParseError> {
-        self.expression()
+    pub fn parse(mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut stmts = Vec::new();
+        while !self.is_at_end() {
+            let stmt = self.statement()?;
+            debug!("pushing statement {:?}", stmt);
+            stmts.push(stmt);
+        }
+        Ok(stmts)
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
+        match self.peek().ttype {
+            Print => {
+                self.advance();
+                self.print_statement()
+            }
+            _ => {
+                self.advance();
+                self.expression_statement()
+            }
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expr = Box::new(self.expression()?);
+        self.consume(Semicolon, "Expected ';' after value.")?;
+        Ok(Stmt::Print(expr))
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expr = Box::new(self.expression()?);
+        self.consume(Semicolon, "Expected ';' after expression.")?;
+        Ok(Stmt::Expression(expr))
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {

@@ -1,7 +1,7 @@
 use {
     expr::Expr,
     expr::Expr::*,
-    visit::{Visitable, Visitor},
+    visit::expr::{Visitable, Visitor},
 };
 
 pub struct Printer;

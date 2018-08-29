@@ -8,6 +8,7 @@ mod expr;
 mod interpreter;
 mod parser;
 mod scanner;
+mod stmt;
 mod token;
 mod types;
 mod visit;
@@ -143,7 +144,7 @@ pub fn run_prompt() -> Result<(), io::Error> {
 
 fn run(source: String) -> Result<(), LoxErrorUnion> {
     let scanner = Scanner::new(&source);
-    let ast = Parser::new(scanner)?.parse()?;
-    Interpreter.interpret(&ast)?;
+    let stmts = Parser::new(scanner)?.parse()?;
+    Interpreter.interpret(stmts)?;
     Ok(())
 }

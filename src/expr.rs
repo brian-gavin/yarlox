@@ -1,9 +1,10 @@
 use {
     ast_printer::Printer,
     token::Token,
-    visit::{Visitable, Visitor},
+    visit::expr::{Visitable, Visitor},
 };
 
+#[derive(Debug)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,

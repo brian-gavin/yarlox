@@ -1,5 +1,7 @@
 use {
+    environment::Environment,
     expr::{Expr, Expr::*},
+    std::rc::Rc,
     stmt::{Stmt, Stmt::*},
     token::Token,
     types::LoxType,
@@ -7,39 +9,49 @@ use {
     RuntimeError,
 };
 
-pub struct Interpreter;
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
-    pub fn interpret(self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn new() -> Interpreter {
+        Interpreter {
+            environment: Environment::new(),
+        }
+    }
+
+    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
         for stmt in stmts.iter() {
             self.execute(stmt)?;
         }
         Ok(())
     }
 
-    fn execute(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
         use visit::stmt::Visitable;
         stmt.accept(self)
     }
 
-    fn evaluate(&self, expr: &Expr) -> Result<LoxType, RuntimeError> {
+    fn evaluate(&self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use visit::expr::Visitable;
         expr.accept(self)
     }
 
-    fn evaluate_unary(&self, op: &Token, right: &Expr) -> Result<LoxType, RuntimeError> {
+    fn evaluate_unary(&self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use {
             token::TokenType::{Bang, Minus},
             types::LoxType::{Boolean, Number},
         };
 
         let right = self.evaluate(right)?;
-        match (op.ttype, right) {
-            (Minus, Number(n)) => Ok(Number(-n)),
-            (Minus, _) => Err(self.number_error(op.clone())),
-            (Bang, right @ _) => Ok(Boolean(!right.is_truthy())),
+        let right = right.as_ref();
+        let res = match (op.ttype, right) {
+            (Minus, Number(n)) => Number(-n),
+            (Minus, _) => return Err(self.number_error(op.clone())),
+            (Bang, right @ _) => Boolean(!right.is_truthy()),
             _ => panic!("Unary operator that is neither Bang nor Minus"),
-        }
+        };
+        Ok(Rc::new(res))
     }
 
     fn evaluate_binary(
@@ -47,7 +59,7 @@ impl Interpreter {
         left: &Expr,
         op: &Token,
         right: &Expr,
-    ) -> Result<LoxType, RuntimeError> {
+    ) -> Result<Rc<LoxType>, RuntimeError> {
         use {
             token::TokenType::{
                 BangEqual, EqualEqual, Greater, GreaterEqual, Less, LessEqual, Minus, Plus, Slash,
@@ -57,12 +69,14 @@ impl Interpreter {
         };
 
         let left = self.evaluate(left)?;
+        let left = left.as_ref();
         let right = self.evaluate(right)?;
+        let right = right.as_ref();
 
         let res = match (left, op.ttype, right) {
             (Number(n1), Star, Number(n2)) => Number(n1 * n2),
             (Number(n1), Slash, Number(n2)) => {
-                if n2 != 0.0 {
+                if n2 != &0.0 {
                     Number(n1 / n2)
                 } else {
                     return Err(self.error(op.clone(), "Divide by zero"));
@@ -70,9 +84,9 @@ impl Interpreter {
             }
             (Number(n1), Minus, Number(n2)) => Number(n1 - n2),
             (Number(n1), Plus, Number(n2)) => Number(n1 + n2),
-            (LoxString(s), Plus, Number(n)) => LoxString(s + &n.to_string()),
+            (LoxString(s), Plus, Number(n)) => LoxString(s.clone() + &n.to_string()),
             (Number(n), Plus, LoxString(s)) => LoxString(n.to_string() + &s),
-            (LoxString(s1), Plus, LoxString(s2)) => LoxString(s1 + &s2),
+            (LoxString(s1), Plus, LoxString(s2)) => LoxString(s1.clone() + &s2),
             (Number(n1), Greater, Number(n2)) => Boolean(n1 > n2),
             (Number(n1), GreaterEqual, Number(n2)) => Boolean(n1 >= n2),
             (Number(n1), Less, Number(n2)) => Boolean(n1 < n2),
@@ -91,7 +105,7 @@ impl Interpreter {
             }
             (_, _, _) => return Err(self.error(op.clone(), "Unexpected binary expression")),
         };
-        Ok(res)
+        Ok(Rc::new(res))
     }
 
     fn number_error(&self, token: Token) -> RuntimeError {
@@ -104,32 +118,41 @@ impl Interpreter {
     }
 }
 
-impl expr::Visitor<Result<LoxType, RuntimeError>> for Interpreter {
-    fn visit_expr(&self, expr: &Expr) -> Result<LoxType, RuntimeError> {
+impl expr::Visitor<Result<Rc<LoxType>, RuntimeError>> for Interpreter {
+    fn visit_expr(&self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use types::LoxType::*;
 
         let res = match expr {
-            StringLiteral(s) => LoxString(s.clone()),
-            NumberLiteral(n) => Number(*n),
-            NilLiteral => Nil,
-            TrueLiteral => Boolean(true),
-            FalseLiteral => Boolean(false),
+            StringLiteral(s) => Rc::new(LoxString(s.clone())),
+            NumberLiteral(n) => Rc::new(Number(*n)),
+            NilLiteral => Rc::new(Nil),
+            TrueLiteral => Rc::new(Boolean(true)),
+            FalseLiteral => Rc::new(Boolean(false)),
             Grouping(grouped) => self.evaluate(grouped)?,
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
+            Variable { name } => self.environment.get(name)?,
         };
         Ok(res)
     }
 }
 
 impl stmt::Visitor<Result<(), RuntimeError>> for Interpreter {
-    fn visit_stmt(&self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
         match stmt {
             Print(expr) => {
                 println!("{}", self.evaluate(expr)?.stringify());
             }
             Expression(expr) => {
                 self.evaluate(expr)?;
+            }
+            Var { name, initializer } => {
+                let val = match initializer {
+                    Some(expr) => self.evaluate(expr)?,
+                    None => Rc::new(LoxType::Nil),
+                };
+                self.environment.define(name.lexeme.clone(), val);
+                debug!("defining {}: env: {:?}", name.lexeme, self.environment);
             }
         }
 

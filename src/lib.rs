@@ -4,6 +4,7 @@ extern crate lazy_static;
 extern crate log;
 
 mod ast_printer;
+mod environment;
 mod expr;
 mod interpreter;
 mod parser;
@@ -120,8 +121,9 @@ impl LoxError for LoxErrorUnion {}
 pub fn run_file(file_name: &str) -> Result<(), io::Error> {
     let mut file = fs::File::open(file_name)?;
     let mut source = String::new();
+    let mut interpreter = Interpreter::new();
     file.read_to_string(&mut source)?;
-    match run(source) {
+    match run(&mut interpreter, source) {
         Err(error) => error.report_exit(),
         Ok(ok) => Ok(ok),
     }
@@ -129,11 +131,12 @@ pub fn run_file(file_name: &str) -> Result<(), io::Error> {
 
 pub fn run_prompt() -> Result<(), io::Error> {
     let handle = io::stdin();
+    let mut interpreter = Interpreter::new();
     loop {
         let mut source = String::new();
         match handle.lock().read_line(&mut source)? {
             0 => break,
-            _ => match run(source) {
+            _ => match run(&mut interpreter, source) {
                 Err(error) => error.report(),
                 _ => (),
             },
@@ -142,9 +145,13 @@ pub fn run_prompt() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run(source: String) -> Result<(), LoxErrorUnion> {
+fn run(interpreter: &mut Interpreter, source: String) -> Result<(), LoxErrorUnion> {
     let scanner = Scanner::new(&source);
-    let stmts = Parser::new(scanner)?.parse()?;
-    Interpreter.interpret(stmts)?;
+    let stmts = Parser::new(scanner)?
+        .parse()?
+        .into_iter()
+        .filter_map(|stmt| stmt)
+        .collect();
+    interpreter.interpret(stmts)?;
     Ok(())
 }

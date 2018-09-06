@@ -4,7 +4,7 @@ use {
     std::f64,
     stmt::Stmt,
     token::{Token, TokenType, TokenType::*},
-    ParseError,
+    LoxError, ParseError,
 };
 
 /// Macro to define a left associative binary expression
@@ -61,14 +61,47 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> Result<Vec<Stmt>, ParseError> {
+    pub fn parse(mut self) -> Result<Vec<Option<Stmt>>, ParseError> {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
-            let stmt = self.statement()?;
-            debug!("pushing statement {:?}", stmt);
-            stmts.push(stmt);
+            let decl = self.declaration();
+            debug!("pushing decl {:?}", decl);
+            stmts.push(decl);
         }
         Ok(stmts)
+    }
+
+    fn declaration(&mut self) -> Option<Stmt> {
+        let res = match self.peek().ttype {
+            Var => {
+                self.advance();
+                self.var_declaration()
+            }
+            _ => self.statement(),
+        };
+        if res.is_err() {
+            res.unwrap_err().report();
+            self.synchronize();
+            None
+        } else {
+            Some(res.expect("Passed error check but failed."))
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
+        debug!("parsing var declaration");
+        let name = self.consume(Ident, "Expect a variable name.")?.clone();
+
+        let initializer = match self.peek().ttype {
+            Equal => {
+                self.advance();
+                Some(Box::new(self.expression()?))
+            }
+            _ => None,
+        };
+
+        self.consume(Semicolon, "Expect ';' after variable declaration")?;
+        Ok(Stmt::Var { name, initializer })
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
@@ -85,6 +118,7 @@ impl Parser {
     }
 
     fn print_statement(&mut self) -> Result<Stmt, ParseError> {
+        debug!("parsing a print statement");
         let expr = Box::new(self.expression()?);
         self.consume(Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Print(expr))
@@ -159,6 +193,12 @@ impl Parser {
                 let expr = self.expression()?;
                 let _ = self.consume(RightParen, "Expect ')' after expression.")?;
                 Expr::Grouping(Box::new(expr))
+            }
+            Ident => {
+                self.advance();
+                Expr::Variable {
+                    name: self.previous().clone(),
+                }
             }
             _ => {
                 let peeked = self.peek();

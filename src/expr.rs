@@ -21,6 +21,9 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Variable {
+        name: Token,
+    },
 }
 
 impl<T> Visitable<T> for Expr {

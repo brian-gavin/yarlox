@@ -35,6 +35,7 @@ impl Visitor<String> for Printer {
             Binary { left, op, right } => self.parenthize(&op.lexeme, vec![left, right]),
             FalseLiteral => "false".to_string(),
             TrueLiteral => "true".to_string(),
+            Variable { name } => format!("variable: {}", name.lexeme),
         }
     }
 }

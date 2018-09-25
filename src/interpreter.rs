@@ -32,12 +32,12 @@ impl Interpreter {
         stmt.accept(self)
     }
 
-    fn evaluate(&self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use visit::expr::Visitable;
         expr.accept(self)
     }
 
-    fn evaluate_unary(&self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn evaluate_unary(&mut self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use {
             token::TokenType::{Bang, Minus},
             types::LoxType::{Boolean, Number},
@@ -55,7 +55,7 @@ impl Interpreter {
     }
 
     fn evaluate_binary(
-        &self,
+        &mut self,
         left: &Expr,
         op: &Token,
         right: &Expr,
@@ -119,7 +119,7 @@ impl Interpreter {
 }
 
 impl expr::Visitor<Result<Rc<LoxType>, RuntimeError>> for Interpreter {
-    fn visit_expr(&self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn visit_expr(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use types::LoxType::*;
 
         let res = match expr {
@@ -132,6 +132,11 @@ impl expr::Visitor<Result<Rc<LoxType>, RuntimeError>> for Interpreter {
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
             Variable { name } => self.environment.get(name)?,
+            Assign { name, value } => {
+                let value = self.evaluate(value)?;
+                self.environment.assign(name, value.clone())?;
+                value
+            }
         };
         Ok(res)
     }

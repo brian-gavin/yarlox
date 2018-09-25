@@ -24,10 +24,23 @@ impl Environment {
     pub fn get(&self, name: &Token) -> Result<Rc<LoxType>, RuntimeError> {
         match self.values.get(&name.lexeme) {
             Some(val) => Ok(val.clone()),
-            None => Err(RuntimeError {
-                msg: format!("Undefined variable '{}'.", name.lexeme),
-                token: name.clone(),
-            }),
+            None => Err(Environment::undefined_variable(name)),
+        }
+    }
+
+    pub fn assign(&mut self, name: &Token, value: Rc<LoxType>) -> Result<(), RuntimeError> {
+        if self.values.contains_key(&name.lexeme) {
+            self.values.insert(name.lexeme.clone(), value.clone());
+            Ok(())
+        } else {
+            Err(Environment::undefined_variable(name))
+        }
+    }
+
+    fn undefined_variable(tok: &Token) -> RuntimeError {
+        RuntimeError {
+            msg: format!("Undefined variable '{}'.", tok.lexeme),
+            token: tok.clone(),
         }
     }
 }

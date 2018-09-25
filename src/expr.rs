@@ -24,10 +24,14 @@ pub enum Expr {
     Variable {
         name: Token,
     },
+    Assign {
+        name: Token,
+        value: Box<Expr>,
+    },
 }
 
 impl<T> Visitable<T> for Expr {
-    fn accept(&self, visitor: &impl Visitor<T>) -> T {
+    fn accept(&self, visitor: &mut impl Visitor<T>) -> T {
         visitor.visit_expr(self)
     }
 }

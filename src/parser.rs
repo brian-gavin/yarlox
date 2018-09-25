@@ -110,10 +110,7 @@ impl Parser {
                 self.advance();
                 self.print_statement()
             }
-            _ => {
-                self.advance();
-                self.expression_statement()
-            }
+            _ => self.expression_statement(),
         }
     }
 
@@ -131,7 +128,31 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        use expr::Expr::{Assign, Variable};
+
+        let expr = self.equality()?;
+        debug!("assignment parsed: {:?}", expr);
+        match self.peek().ttype {
+            Equal => {
+                self.advance();
+                let equals = self.previous().clone();
+                let value = Box::new(self.assignment()?);
+
+                let assign = match expr {
+                    Variable { name } => Assign { name, value },
+                    _ => {
+                        self.error(&equals, "Invalid assignment target").report();
+                        expr
+                    }
+                };
+                Ok(assign)
+            }
+            _ => Ok(expr),
+        }
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {

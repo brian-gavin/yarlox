@@ -7,11 +7,11 @@ use {
 pub struct Printer;
 
 impl Printer {
-    pub fn print(&self, expr: &Expr) -> String {
+    pub fn print(&mut self, expr: &Expr) -> String {
         self.visit_expr(expr)
     }
 
-    fn parenthize(&self, name: &str, exprs: Vec<&Expr>) -> String {
+    fn parenthize(&mut self, name: &str, exprs: Vec<&Expr>) -> String {
         let mut rv = String::new();
         rv.push('(');
         rv.push_str(name);
@@ -25,7 +25,7 @@ impl Printer {
 }
 
 impl Visitor<String> for Printer {
-    fn visit_expr(&self, expr: &Expr) -> String {
+    fn visit_expr(&mut self, expr: &Expr) -> String {
         match expr {
             NilLiteral => "nil".to_string(),
             NumberLiteral(n) => n.to_string(),
@@ -36,6 +36,7 @@ impl Visitor<String> for Printer {
             FalseLiteral => "false".to_string(),
             TrueLiteral => "true".to_string(),
             Variable { name } => format!("variable: {}", name.lexeme),
+            Assign { name, value } => format!("assign: {} to {}", value.accept(self), name.lexeme),
         }
     }
 }

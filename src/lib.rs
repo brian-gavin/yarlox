@@ -2,6 +2,7 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate rustyline;
 
 mod ast_printer;
 mod environment;
@@ -18,10 +19,11 @@ use {
     error::{LoxError, LoxErrorTrait},
     interpreter::Interpreter,
     parser::Parser,
+    rustyline::{error::ReadlineError, Editor},
     scanner::Scanner,
     std::{
-        fs, io,
-        io::{BufRead, Read},
+        fs,
+        io::{self, prelude::*},
     },
 };
 
@@ -37,17 +39,27 @@ pub fn run_file(file_name: &str) -> Result<(), io::Error> {
 }
 
 pub fn run_prompt() -> Result<(), io::Error> {
-    let handle = io::stdin();
     let mut interpreter = Interpreter::new();
+    let mut rl = Editor::<()>::new();
+    if rl.load_history("./.loxhistory").is_err() {
+        println!("No history file");
+    }
     loop {
-        let mut source = String::new();
-        match handle.lock().read_line(&mut source)? {
-            0 => break,
-            _ => match run(&mut interpreter, source) {
-                Err(error) => error.report(),
-                _ => (),
-            },
+        let readline = rl.readline("lox> ");
+        match readline {
+            Ok(line) => {
+                rl.add_history_entry(line.as_ref());
+                match run(&mut interpreter, line) {
+                    Err(e) => e.report(),
+                    _ => (),
+                }
+            }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+            Err(e) => eprintln!("Readline error: {}", e),
         }
+    }
+    if rl.save_history("./.loxhistory").is_err() {
+        println!("Error saving history file");
     }
     Ok(())
 }

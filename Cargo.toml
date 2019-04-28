@@ -7,3 +7,4 @@ authors = ["Brian Gavin <bgavin1996@gmail.com>"]
 lazy_static = "1.1.0"
 log = "0.4"
 env_logger = "0.5"
+rustyline = "4.0.0"

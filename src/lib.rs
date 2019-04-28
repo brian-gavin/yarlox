@@ -5,6 +5,7 @@ extern crate log;
 
 mod ast_printer;
 mod environment;
+mod error;
 mod expr;
 mod interpreter;
 mod parser;
@@ -12,111 +13,17 @@ mod scanner;
 mod stmt;
 mod token;
 mod types;
-mod visit;
 
 use {
+    error::{LoxError, LoxErrorTrait},
     interpreter::Interpreter,
     parser::Parser,
     scanner::Scanner,
     std::{
-        error::Error,
-        fmt, fs, io,
+        fs, io,
         io::{BufRead, Read},
-        process,
     },
 };
-
-trait LoxError
-where
-    Self: Error + Sized,
-{
-    fn report(&self) {
-        eprintln!("{}", self);
-    }
-
-    fn message(&self) -> String {
-        format!("{}", self)
-    }
-
-    fn report_exit(self) -> ! {
-        self.report();
-        process::exit(0)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ParseError {
-    line: u32,
-    e_type: String,
-    msg: String,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}] Error {}: {}", self.line, self.e_type, self.msg)
-    }
-}
-
-impl Error for ParseError {}
-
-impl LoxError for ParseError {}
-
-impl ParseError {
-    pub fn new(line: u32, e_type: String, msg: String) -> ParseError {
-        ParseError {
-            line: line,
-            e_type: e_type,
-            msg: msg,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeError {
-    msg: String,
-    token: token::Token,
-}
-
-impl fmt::Display for RuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}] Runtime Error: {}", self.token.line, self.msg)
-    }
-}
-
-impl Error for RuntimeError {}
-
-impl LoxError for RuntimeError {}
-
-#[derive(Debug)]
-enum LoxErrorUnion {
-    RuntimeError(RuntimeError),
-    ParseError(ParseError),
-}
-
-impl fmt::Display for LoxErrorUnion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            LoxErrorUnion::RuntimeError(e) => write!(f, "{}", e),
-            LoxErrorUnion::ParseError(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl From<RuntimeError> for LoxErrorUnion {
-    fn from(e: RuntimeError) -> LoxErrorUnion {
-        LoxErrorUnion::RuntimeError(e)
-    }
-}
-
-impl From<ParseError> for LoxErrorUnion {
-    fn from(e: ParseError) -> LoxErrorUnion {
-        LoxErrorUnion::ParseError(e)
-    }
-}
-
-impl Error for LoxErrorUnion {}
-
-impl LoxError for LoxErrorUnion {}
 
 pub fn run_file(file_name: &str) -> Result<(), io::Error> {
     let mut file = fs::File::open(file_name)?;
@@ -145,13 +52,13 @@ pub fn run_prompt() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run(interpreter: &mut Interpreter, source: String) -> Result<(), LoxErrorUnion> {
+fn run(interpreter: &mut Interpreter, source: String) -> Result<(), LoxError> {
     let scanner = Scanner::new(&source);
-    let stmts = Parser::new(scanner)?
+    let stmts: Vec<stmt::Stmt> = Parser::new(scanner)?
         .parse()?
         .into_iter()
         .filter_map(|stmt| stmt)
         .collect();
-    interpreter.interpret(stmts)?;
+    interpreter.interpret(&stmts)?;
     Ok(())
 }

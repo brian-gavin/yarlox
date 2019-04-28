@@ -1,14 +1,10 @@
-use {
-    expr::Expr,
-    expr::Expr::*,
-    visit::expr::{Visitable, Visitor},
-};
+use {expr::Expr, expr::Expr::*};
 
 pub struct Printer;
 
 impl Printer {
     pub fn print(&mut self, expr: &Expr) -> String {
-        self.visit_expr(expr)
+        self.eval(expr)
     }
 
     fn parenthize(&mut self, name: &str, exprs: Vec<&Expr>) -> String {
@@ -17,15 +13,13 @@ impl Printer {
         rv.push_str(name);
         for expr in exprs.iter() {
             rv.push(' ');
-            rv.push_str(expr.accept(self).as_str());
+            rv.push_str(self.eval(expr).as_str());
         }
         rv.push(')');
         rv
     }
-}
 
-impl Visitor<String> for Printer {
-    fn visit_expr(&mut self, expr: &Expr) -> String {
+    fn eval(&mut self, expr: &Expr) -> String {
         match expr {
             NilLiteral => "nil".to_string(),
             NumberLiteral(n) => n.to_string(),
@@ -36,7 +30,7 @@ impl Visitor<String> for Printer {
             FalseLiteral => "false".to_string(),
             TrueLiteral => "true".to_string(),
             Variable { name } => format!("variable: {}", name.lexeme),
-            Assign { name, value } => format!("assign: {} to {}", value.accept(self), name.lexeme),
+            Assign { name, value } => format!("assign: {} to {}", self.eval(value), name.lexeme),
         }
     }
 }
@@ -45,7 +39,6 @@ impl Visitor<String> for Printer {
 mod tests {
     use {
         ast_printer::Printer,
-        expr::Expr,
         expr::Expr::*,
         token::{Token, TokenType},
     };
@@ -66,7 +59,7 @@ mod tests {
             }),
         };
         let expected = "(+ 1.23 (- 2))";
-        let printer = Printer;
+        let mut printer = Printer;
         assert_eq!(expected, printer.print(&ast));
     }
 }

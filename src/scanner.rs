@@ -1,10 +1,9 @@
 use {
-    parser::Parser,
+    error::ParseError,
     std::collections::{HashMap, VecDeque},
     std::str::Chars,
     token::TokenType::*,
     token::{Token, TokenType},
-    ParseError,
 };
 
 lazy_static! {
@@ -25,9 +24,10 @@ lazy_static! {
         ("true", True),
         ("var", Var),
         ("while", While),
-    ].iter()
-        .cloned()
-        .collect();
+    ]
+    .iter()
+    .cloned()
+    .collect();
 }
 
 const LOOKAHEAD: usize = 2;
@@ -49,10 +49,6 @@ impl<'a> Scanner<'a> {
             eof: false,
             had_error: false,
         }
-    }
-
-    pub fn parser(self) -> Result<Parser, ParseError> {
-        Parser::new(self)
     }
 
     fn basic_token(&self, ttype: TokenType, lexeme: &'static str) -> Token {
@@ -231,7 +227,7 @@ impl<'a> Scanner<'a> {
                             return Err(self.error(
                                 "Invalid number".to_string(),
                                 "Expected digit after '.'".to_string(),
-                            ))
+                            ));
                         }
                     }
                 }

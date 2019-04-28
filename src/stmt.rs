@@ -1,8 +1,4 @@
-use {
-    expr::Expr,
-    token::Token,
-    visit::stmt::{Visitable, Visitor},
-};
+use {expr::Expr, token::Token};
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -12,10 +8,4 @@ pub enum Stmt {
         name: Token,
         initializer: Option<Box<Expr>>,
     },
-}
-
-impl<T> Visitable<T> for Stmt {
-    fn accept(&self, visitor: &mut impl Visitor<T>) -> T {
-        visitor.visit_stmt(self)
-    }
 }

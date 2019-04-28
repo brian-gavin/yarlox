@@ -1,12 +1,11 @@
 use {
     environment::Environment,
+    error::RuntimeError,
     expr::{Expr, Expr::*},
     std::rc::Rc,
     stmt::{Stmt, Stmt::*},
     token::Token,
     types::LoxType,
-    visit::{expr, stmt},
-    RuntimeError,
 };
 
 pub struct Interpreter {
@@ -20,7 +19,7 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
         for stmt in stmts.iter() {
             self.execute(stmt)?;
         }
@@ -28,13 +27,44 @@ impl Interpreter {
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
-        use visit::stmt::Visitable;
-        stmt.accept(self)
+        match stmt {
+            Print(expr) => {
+                println!("{}", self.evaluate(expr)?.stringify());
+            }
+            Expression(expr) => {
+                self.evaluate(expr)?;
+            }
+            Var { name, initializer } => {
+                let val = match initializer {
+                    Some(expr) => self.evaluate(expr)?,
+                    None => Rc::new(LoxType::Nil),
+                };
+                self.environment.define(name.lexeme.clone(), val);
+                debug!("defining {}: env: {:?}", name.lexeme, self.environment);
+            }
+        }
+        Ok(())
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
-        use visit::expr::Visitable;
-        expr.accept(self)
+        use self::LoxType::*;
+        let res = match expr {
+            StringLiteral(s) => Rc::new(LoxString(s.clone())),
+            NumberLiteral(n) => Rc::new(Number(*n)),
+            NilLiteral => Rc::new(Nil),
+            TrueLiteral => Rc::new(Boolean(true)),
+            FalseLiteral => Rc::new(Boolean(false)),
+            Grouping(grouped) => self.evaluate(grouped)?,
+            Unary { op, right } => self.evaluate_unary(op, right)?,
+            Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
+            Variable { name } => self.environment.get(name)?,
+            Assign { name, value } => {
+                let value = self.evaluate(value)?;
+                self.environment.assign(name, value.clone())?;
+                value
+            }
+        };
+        Ok(res)
     }
 
     fn evaluate_unary(&mut self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
@@ -101,7 +131,7 @@ impl Interpreter {
             | (_, Less, _)
             | (_, LessEqual, _) => return Err(self.number_error(op.clone())),
             (_, Plus, _) => {
-                return Err(self.error(op.clone(), "Operators must be numbers or strings"))
+                return Err(self.error(op.clone(), "Operators must be numbers or strings"));
             }
             (_, _, _) => return Err(self.error(op.clone(), "Unexpected binary expression")),
         };
@@ -115,52 +145,5 @@ impl Interpreter {
     fn error(&self, token: Token, msg: &str) -> RuntimeError {
         let msg = msg.to_string();
         RuntimeError { token, msg }
-    }
-}
-
-impl expr::Visitor<Result<Rc<LoxType>, RuntimeError>> for Interpreter {
-    fn visit_expr(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
-        use types::LoxType::*;
-
-        let res = match expr {
-            StringLiteral(s) => Rc::new(LoxString(s.clone())),
-            NumberLiteral(n) => Rc::new(Number(*n)),
-            NilLiteral => Rc::new(Nil),
-            TrueLiteral => Rc::new(Boolean(true)),
-            FalseLiteral => Rc::new(Boolean(false)),
-            Grouping(grouped) => self.evaluate(grouped)?,
-            Unary { op, right } => self.evaluate_unary(op, right)?,
-            Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
-            Variable { name } => self.environment.get(name)?,
-            Assign { name, value } => {
-                let value = self.evaluate(value)?;
-                self.environment.assign(name, value.clone())?;
-                value
-            }
-        };
-        Ok(res)
-    }
-}
-
-impl stmt::Visitor<Result<(), RuntimeError>> for Interpreter {
-    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
-        match stmt {
-            Print(expr) => {
-                println!("{}", self.evaluate(expr)?.stringify());
-            }
-            Expression(expr) => {
-                self.evaluate(expr)?;
-            }
-            Var { name, initializer } => {
-                let val = match initializer {
-                    Some(expr) => self.evaluate(expr)?,
-                    None => Rc::new(LoxType::Nil),
-                };
-                self.environment.define(name.lexeme.clone(), val);
-                debug!("defining {}: env: {:?}", name.lexeme, self.environment);
-            }
-        }
-
-        Ok(())
     }
 }

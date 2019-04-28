@@ -1,10 +1,10 @@
 use {
+    error::{LoxErrorTrait, ParseError},
     expr::Expr,
     scanner::Scanner,
     std::f64,
     stmt::Stmt,
     token::{Token, TokenType, TokenType::*},
-    LoxError, ParseError,
 };
 
 /// Macro to define a left associative binary expression

@@ -1,8 +1,4 @@
-use {
-    ast_printer::Printer,
-    token::Token,
-    visit::expr::{Visitable, Visitor},
-};
+use {ast_printer::Printer, std::fmt, token::Token};
 
 #[derive(Debug)]
 pub enum Expr {
@@ -30,14 +26,10 @@ pub enum Expr {
     },
 }
 
-impl<T> Visitable<T> for Expr {
-    fn accept(&self, visitor: &mut impl Visitor<T>) -> T {
-        visitor.visit_expr(self)
-    }
-}
-
-impl Expr {
-    pub fn print(self) {
-        println!("{}", Printer.print(&self))
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ast = Printer.print(self);
+        f.write_str(&ast)?;
+        Ok(())
     }
 }

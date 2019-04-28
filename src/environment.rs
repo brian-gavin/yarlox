@@ -1,8 +1,8 @@
 use {
+    error::RuntimeError,
     std::{collections::HashMap, rc::Rc},
     token::Token,
     types::LoxType,
-    RuntimeError,
 };
 
 #[derive(Debug)]

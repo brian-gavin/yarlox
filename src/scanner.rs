@@ -101,7 +101,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             '"' => self.string()?,
-            '0'...'9' => self.number(c)?,
+            '0'..='9' => self.number(c)?,
             _ => self.ident(c)?,
         };
 
@@ -211,14 +211,14 @@ impl<'a> Scanner<'a> {
         lexeme.push(first);
         while let Some(c) = self.peek(1) {
             match c {
-                '0'...'9' => {
+                '0'..='9' => {
                     lexeme.push(c);
                     self.advance();
                 }
                 '.' => {
                     let peeked = self.peek(2);
                     match peeked {
-                        Some(c2 @ '0'...'9') => {
+                        Some(c2 @ '0'..='9') => {
                             lexeme.push(c);
                             lexeme.push(c2);
                             self.advance();

@@ -48,7 +48,7 @@ pub fn run_prompt() -> Result<(), io::Error> {
         let readline = rl.readline("lox> ");
         match readline {
             Ok(line) => {
-                rl.add_history_entry(line.as_ref());
+                rl.add_history_entry(line.as_str());
                 match run(&mut interpreter, line) {
                     Err(e) => e.report(),
                     _ => (),

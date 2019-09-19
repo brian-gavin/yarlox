@@ -110,6 +110,7 @@ impl Parser {
                 self.advance();
                 self.print_statement()
             }
+            LeftBrace => self.block(),
             _ => self.expression_statement(),
         }
     }
@@ -125,6 +126,18 @@ impl Parser {
         let expr = Box::new(self.expression()?);
         self.consume(Semicolon, "Expected ';' after expression.")?;
         Ok(Stmt::Expression(expr))
+    }
+
+    fn block(&mut self) -> Result<Stmt, ParseError> {
+        let mut stmts = Vec::new();
+        while self.peek().ttype != RightBrace && !self.is_at_end() {
+            let next = self.declaration();
+            if next.is_some() {
+                stmts.push(next.unwrap());
+            }
+        }
+        self.consume(RightBrace, "Expect '}' after block.")?;
+        Ok(Stmt::Block(stmts))
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {

@@ -2,3 +2,4 @@
 **/*.rs.bk
 lox_test/
 .vscode/
+.loxhistory

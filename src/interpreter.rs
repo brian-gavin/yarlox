@@ -42,6 +42,11 @@ impl Interpreter {
                 self.environment.define(name.lexeme.clone(), val);
                 debug!("defining {}: env: {:?}", name.lexeme, self.environment);
             }
+            Block(stmts) => {
+                self.environment.push_scope();
+                self.interpret(stmts)?;
+                self.environment.pop_scope();
+            }
         }
         Ok(())
     }

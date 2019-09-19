@@ -8,4 +8,5 @@ pub enum Stmt {
         name: Token,
         initializer: Option<Box<Expr>>,
     },
+    Block(Vec<Stmt>),
 }

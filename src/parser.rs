@@ -110,7 +110,10 @@ impl Parser {
                 self.advance();
                 self.print_statement()
             }
-            LeftBrace => self.block(),
+            LeftBrace => {
+                self.advance();
+                self.block()
+            }
             _ => self.expression_statement(),
         }
     }
@@ -132,8 +135,8 @@ impl Parser {
         let mut stmts = Vec::new();
         while self.peek().ttype != RightBrace && !self.is_at_end() {
             let next = self.declaration();
-            if next.is_some() {
-                stmts.push(next.unwrap());
+            if let Some(next) = next {
+                stmts.push(next);
             }
         }
         self.consume(RightBrace, "Expect '}' after block.")?;

@@ -1,6 +1,7 @@
 use {
     error::ParseError,
     std::collections::{HashMap, VecDeque},
+    std::iter::Peekable,
     std::str::Chars,
     token::TokenType::*,
     token::{Token, TokenType},
@@ -33,7 +34,7 @@ lazy_static! {
 const LOOKAHEAD: usize = 2;
 
 pub struct Scanner<'a> {
-    source: Chars<'a>,
+    source: Peekable<Chars<'a>>,
     peeks: VecDeque<char>,
     line: u32,
     eof: bool,
@@ -43,7 +44,7 @@ pub struct Scanner<'a> {
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Scanner<'a> {
         Scanner {
-            source: source.chars(),
+            source: source.chars().peekable(),
             peeks: VecDeque::with_capacity(LOOKAHEAD),
             line: 1,
             eof: false,
@@ -123,6 +124,8 @@ impl<'a> Scanner<'a> {
         assert!(self.peeks.len() <= LOOKAHEAD);
         if let Some(c) = self.peeks.get(amt - 1) {
             return Some(*c);
+        } else if self.peeks.len() == 0 && self.source.peek().is_none() {
+            return None;
         }
         for _ in self.peeks.len()..amt {
             if let Some(c) = self.source.next() {

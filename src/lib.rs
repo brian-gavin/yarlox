@@ -32,7 +32,7 @@ pub fn run_file(file_name: &str) -> Result<(), io::Error> {
     let mut source = String::new();
     let mut interpreter = Interpreter::new();
     file.read_to_string(&mut source)?;
-    match run(&mut interpreter, source) {
+    match run(&mut interpreter, source, false) {
         Err(error) => error.report_exit(),
         Ok(ok) => Ok(ok),
     }
@@ -49,7 +49,7 @@ pub fn run_prompt() -> Result<(), io::Error> {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
-                match run(&mut interpreter, line) {
+                match run(&mut interpreter, line, true) {
                     Err(e) => e.report(),
                     _ => (),
                 }
@@ -64,9 +64,9 @@ pub fn run_prompt() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run(interpreter: &mut Interpreter, source: String) -> Result<(), LoxError> {
+fn run(interpreter: &mut Interpreter, source: String, repl: bool) -> Result<(), LoxError> {
     let scanner = Scanner::new(&source);
-    let stmts: Vec<stmt::Stmt> = Parser::new(scanner)?
+    let stmts: Vec<stmt::Stmt> = Parser::new(scanner, repl)?
         .parse()?
         .into_iter()
         .filter_map(|stmt| stmt)

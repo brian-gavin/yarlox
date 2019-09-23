@@ -38,10 +38,11 @@ macro_rules! left_associative_binary_expr {
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    repl: bool,
 }
 
 impl Parser {
-    pub fn new(scanner: Scanner) -> Result<Parser, ParseError> {
+    pub fn new(scanner: Scanner, repl: bool) -> Result<Parser, ParseError> {
         let mut scan_had_error = false;
         let mut error: Option<ParseError> = None;
         let tokens = scanner
@@ -57,7 +58,11 @@ impl Parser {
         if scan_had_error {
             Err(error.unwrap())
         } else {
-            Ok(Parser { tokens, current: 0 })
+            Ok(Parser {
+                tokens,
+                current: 0,
+                repl,
+            })
         }
     }
 
@@ -127,8 +132,12 @@ impl Parser {
 
     fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
         let expr = Box::new(self.expression()?);
-        self.consume(Semicolon, "Expected ';' after expression.")?;
-        Ok(Stmt::Expression(expr))
+        if !self.repl {
+            self.consume(Semicolon, "Expected ';' after expression.")?;
+            Ok(Stmt::Expression(expr))
+        } else {
+            Ok(Stmt::Print(expr))
+        }
     }
 
     fn block(&mut self) -> Result<Stmt, ParseError> {

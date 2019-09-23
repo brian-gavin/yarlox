@@ -9,4 +9,9 @@ pub enum Stmt {
         initializer: Option<Box<Expr>>,
     },
     Block(Vec<Stmt>),
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+    },
 }

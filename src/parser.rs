@@ -111,6 +111,10 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
         match self.peek().ttype {
+            If => {
+                self.advance();
+                self.if_statement()
+            }
             Print => {
                 self.advance();
                 self.print_statement()
@@ -121,6 +125,25 @@ impl Parser {
             }
             _ => self.expression_statement(),
         }
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(LeftParen, "Expected '(' after 'if'.")?;
+        let condition = Box::new(self.expression()?);
+        self.consume(RightParen, "Expected ')' after condition.")?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = match self.peek().ttype {
+            Else => {
+                self.advance();
+                Some(Box::new(self.statement()?))
+            }
+            _ => None,
+        };
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
 
     fn print_statement(&mut self) -> Result<Stmt, ParseError> {

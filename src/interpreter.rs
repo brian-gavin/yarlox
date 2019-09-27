@@ -58,6 +58,11 @@ impl Interpreter {
                     self.execute(else_branch)?;
                 }
             }
+            While { condition, body } => {
+                while self.evaluate(condition)?.is_truthy() {
+                    self.execute(body)?;
+                }
+            }
         }
         Ok(())
     }

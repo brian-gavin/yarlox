@@ -115,6 +115,10 @@ impl Parser {
                 self.advance();
                 self.if_statement()
             }
+            While => {
+                self.advance();
+                self.while_statement()
+            }
             Print => {
                 self.advance();
                 self.print_statement()
@@ -144,6 +148,14 @@ impl Parser {
             then_branch,
             else_branch,
         })
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(LeftParen, "Expected '(' after 'while'.")?;
+        let condition = Box::new(self.expression()?);
+        self.consume(RightParen, "Expected ')' after condition.")?;
+        let body = Box::new(self.statement()?);
+        Ok(Stmt::While { condition, body })
     }
 
     fn print_statement(&mut self) -> Result<Stmt, ParseError> {

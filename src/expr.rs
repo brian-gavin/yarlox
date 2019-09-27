@@ -7,6 +7,11 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Logical {
+        left: Box<Expr>,
+        op: Token,
+        right: Box<Expr>,
+    },
     StringLiteral(String),
     NumberLiteral(f64),
     NilLiteral,

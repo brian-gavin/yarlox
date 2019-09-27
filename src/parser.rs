@@ -12,7 +12,7 @@ use {
 /// non-terminal which has higher precedence, and coma separated `TokenType`s that
 /// this expression uses
 macro_rules! left_associative_binary_expr {
-    ($self:ident, $higher_prec:ident, $($matching:pat),+ ) => {{
+    ($self:ident, $higher_prec:ident, $expr_type:ident, $($matching:pat),+ ) => {{
         let mut expr = $self.$higher_prec()?;
         while match $self.peek().ttype {
             $(
@@ -25,7 +25,7 @@ macro_rules! left_associative_binary_expr {
         } {
             let op = $self.previous().clone();
             let right = Box::new($self.$higher_prec()?);
-            expr = Expr::Binary {
+            expr = Expr::$expr_type {
                 left: Box::new(expr),
                 op,
                 right,
@@ -182,7 +182,7 @@ impl Parser {
     fn assignment(&mut self) -> Result<Expr, ParseError> {
         use expr::Expr::{Assign, Variable};
 
-        let expr = self.equality()?;
+        let expr = self.or()?;
         debug!("assignment parsed: {:?}", expr);
         match self.peek().ttype {
             Equal => {
@@ -203,20 +203,36 @@ impl Parser {
         }
     }
 
+    fn or(&mut self) -> Result<Expr, ParseError> {
+        left_associative_binary_expr!(self, and, Logical, Or)
+    }
+
+    fn and(&mut self) -> Result<Expr, ParseError> {
+        left_associative_binary_expr!(self, equality, Logical, And)
+    }
+
     fn equality(&mut self) -> Result<Expr, ParseError> {
-        left_associative_binary_expr!(self, comparison, BangEqual, EqualEqual)
+        left_associative_binary_expr!(self, comparison, Binary, BangEqual, EqualEqual)
     }
 
     fn comparison(&mut self) -> Result<Expr, ParseError> {
-        left_associative_binary_expr!(self, addition, Greater, GreaterEqual, Less, LessEqual)
+        left_associative_binary_expr!(
+            self,
+            addition,
+            Binary,
+            Greater,
+            GreaterEqual,
+            Less,
+            LessEqual
+        )
     }
 
     fn addition(&mut self) -> Result<Expr, ParseError> {
-        left_associative_binary_expr!(self, multiplication, Plus, Minus)
+        left_associative_binary_expr!(self, multiplication, Binary, Plus, Minus)
     }
 
     fn multiplication(&mut self) -> Result<Expr, ParseError> {
-        left_associative_binary_expr!(self, unary, Star, Slash)
+        left_associative_binary_expr!(self, unary, Binary, Star, Slash)
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {

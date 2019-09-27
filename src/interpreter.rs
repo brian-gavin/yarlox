@@ -72,6 +72,7 @@ impl Interpreter {
             FalseLiteral => Rc::new(Boolean(false)),
             Grouping(grouped) => self.evaluate(grouped)?,
             Unary { op, right } => self.evaluate_unary(op, right)?,
+            Logical { left, op, right } => self.evaluate_logical(left, op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
             Variable { name } => self.environment.get(name)?,
             Assign { name, value } => {
@@ -98,6 +99,27 @@ impl Interpreter {
             _ => panic!("Unary operator that is neither Bang nor Minus"),
         };
         Ok(Rc::new(res))
+    }
+
+    fn evaluate_logical(
+        &mut self,
+        left: &Expr,
+        op: &Token,
+        right: &Expr,
+    ) -> Result<Rc<LoxType>, RuntimeError> {
+        use token::TokenType::Or;
+        let left = self.evaluate(left)?;
+
+        if op.ttype == Or {
+            if left.is_truthy() {
+                return Ok(left);
+            }
+        } else {
+            if !left.is_truthy() {
+                return Ok(left);
+            }
+        }
+        self.evaluate(right)
     }
 
     fn evaluate_binary(

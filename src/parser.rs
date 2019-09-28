@@ -167,11 +167,11 @@ impl Parser {
 
     fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
         let expr = Box::new(self.expression()?);
-        if !self.repl {
+        if self.repl && self.is_at_end() {
+            Ok(Stmt::Print(expr))
+        } else {
             self.consume(Semicolon, "Expected ';' after expression.")?;
             Ok(Stmt::Expression(expr))
-        } else {
-            Ok(Stmt::Print(expr))
         }
     }
 

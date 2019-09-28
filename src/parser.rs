@@ -111,6 +111,10 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
         match self.peek().ttype {
+            For => {
+                self.advance();
+                self.for_statement()
+            }
             If => {
                 self.advance();
                 self.if_statement()
@@ -129,6 +133,66 @@ impl Parser {
             }
             _ => self.expression_statement(),
         }
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(LeftParen, "Expected '(' after 'for'.")?;
+        let initializer = match self.peek().ttype {
+            Semicolon => {
+                self.advance();
+                None
+            }
+            Var => {
+                self.advance();
+                Some(self.var_declaration()?)
+            }
+            _ => {
+                self.advance();
+                Some(self.expression_statement()?)
+            }
+        };
+        let condition = if self.peek().ttype != Semicolon {
+            Box::new(self.expression()?)
+        } else {
+            Box::new(Expr::TrueLiteral)
+        };
+        self.consume(Semicolon, "Expected ';' after loop condition.")?;
+        let increment = if self.peek().ttype != RightParen {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(RightParen, "Expected ')' after 'for' clauses.")?;
+
+        // build up the while loop, starting with the body
+        let mut body = self.statement()?;
+
+        // if there is an increment, add it to the end of the body
+        if let Some(increment) = increment {
+            body = Stmt::Block(vec![body, Stmt::Expression(increment)]);
+        }
+
+        // create the while loop with the condition
+        body = Stmt::While {
+            condition,
+            body: Box::new(body),
+        };
+
+        // add the initializer
+        if let Some(initializer) = initializer {
+            body = Stmt::Block(vec![initializer, body]);
+        }
+
+        /*
+            {
+                initializer;
+                while(condition) {
+                    body;
+                    increment;
+                }
+            }
+        */
+        Ok(body)
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParseError> {

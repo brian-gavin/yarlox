@@ -10,6 +10,7 @@ use {
 lazy_static! {
     static ref KEYWORDS: HashMap<&'static str, TokenType> = [
         ("and", And),
+        ("break", Break),
         ("class", Class),
         ("else", Else),
         ("false", False),

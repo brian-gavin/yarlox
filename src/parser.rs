@@ -39,6 +39,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     repl: bool,
+    in_loop: bool,
 }
 
 impl Parser {
@@ -62,6 +63,7 @@ impl Parser {
                 tokens,
                 current: 0,
                 repl,
+                in_loop: false,
             })
         }
     }
@@ -130,6 +132,10 @@ impl Parser {
             LeftBrace => {
                 self.advance();
                 self.block()
+            }
+            Break => {
+                self.advance();
+                self.break_statement()
             }
             _ => self.expression_statement(),
         }
@@ -215,10 +221,12 @@ impl Parser {
     }
 
     fn while_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.in_loop = true;
         self.consume(LeftParen, "Expected '(' after 'while'.")?;
         let condition = Box::new(self.expression()?);
         self.consume(RightParen, "Expected ')' after condition.")?;
         let body = Box::new(self.statement()?);
+        self.in_loop = false;
         Ok(Stmt::While { condition, body })
     }
 
@@ -276,6 +284,15 @@ impl Parser {
                 Ok(assign)
             }
             _ => Ok(expr),
+        }
+    }
+
+    fn break_statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.in_loop {
+            self.consume(Semicolon, "Expected ';' after 'break'.")?;
+            Ok(Stmt::Break)
+        } else {
+            Err(self.error(self.previous(), "Must be in a loop to 'break'."))
         }
     }
 

@@ -12,6 +12,20 @@ pub struct Interpreter {
     environment: Environment,
 }
 
+#[derive(Debug, PartialEq)]
+enum ExecuteReturn {
+    Void,
+    Break,
+}
+
+macro_rules! execute_or_return_break {
+    ($self:ident, $stmt:ident) => {
+        if $self.execute($stmt)? == ExecuteReturn::Break {
+            return Ok(ExecuteReturn::Break);
+        }
+    };
+}
+
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
@@ -26,7 +40,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
         match stmt {
             Print(expr) => {
                 println!("{}", self.evaluate(expr)?.stringify());
@@ -44,7 +58,9 @@ impl Interpreter {
             }
             Block(stmts) => {
                 self.environment.push_scope();
-                self.interpret(stmts)?;
+                for stmt in stmts.iter() {
+                    execute_or_return_break!(self, stmt);
+                }
                 self.environment.pop_scope();
             }
             If {
@@ -53,18 +69,21 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.evaluate(condition)?.is_truthy() {
-                    self.execute(then_branch)?;
+                    execute_or_return_break!(self, then_branch);
                 } else if let Some(else_branch) = else_branch {
-                    self.execute(else_branch)?;
+                    execute_or_return_break!(self, else_branch);
                 }
             }
             While { condition, body } => {
                 while self.evaluate(condition)?.is_truthy() {
-                    self.execute(body)?;
+                    if self.execute(body)? == ExecuteReturn::Break {
+                        break;
+                    }
                 }
             }
+            Break => return Ok(ExecuteReturn::Break),
         }
-        Ok(())
+        Ok(ExecuteReturn::Void)
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {

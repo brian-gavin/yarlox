@@ -1,5 +1,6 @@
 [package]
 name = "yarlox"
+default-run = "yarlox"
 version = "0.1.0"
 authors = ["Brian Gavin <bgavin1996@gmail.com>"]
 
@@ -8,3 +9,4 @@ lazy_static = "1.1.0"
 log = "0.4"
 env_logger = "0.5"
 rustyline = "5"
+ansi_term = "0.12"

@@ -1,0 +1,16 @@
+while(true) {
+    print(0);
+    break;
+}
+for(var i = 0; true; i = i + 1) {
+    print(1);
+    break;
+}
+for(var i = 3; true; i = i + 1) {
+    for(var j = 2; true; j = j + 1) {
+        print(j);
+        break;
+    }
+    print(i);
+    break;
+}

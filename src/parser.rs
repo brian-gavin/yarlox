@@ -39,7 +39,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     repl: bool,
-    in_loop: bool,
+    in_loop_depth: usize,
 }
 
 impl Parser {
@@ -63,7 +63,7 @@ impl Parser {
                 tokens,
                 current: 0,
                 repl,
-                in_loop: false,
+                in_loop_depth: 0,
             })
         }
     }
@@ -171,7 +171,9 @@ impl Parser {
         self.consume(RightParen, "Expected ')' after 'for' clauses.")?;
 
         // build up the while loop, starting with the body
+        self.in_loop_depth += 1;
         let mut body = self.statement()?;
+        self.in_loop_depth -= 1;
 
         // if there is an increment, add it to the end of the body
         if let Some(increment) = increment {
@@ -221,12 +223,12 @@ impl Parser {
     }
 
     fn while_statement(&mut self) -> Result<Stmt, ParseError> {
-        self.in_loop = true;
         self.consume(LeftParen, "Expected '(' after 'while'.")?;
         let condition = Box::new(self.expression()?);
         self.consume(RightParen, "Expected ')' after condition.")?;
+        self.in_loop_depth += 1;
         let body = Box::new(self.statement()?);
-        self.in_loop = false;
+        self.in_loop_depth -= 1;
         Ok(Stmt::While { condition, body })
     }
 
@@ -288,7 +290,7 @@ impl Parser {
     }
 
     fn break_statement(&mut self) -> Result<Stmt, ParseError> {
-        if self.in_loop {
+        if self.in_loop_depth > 0 {
             self.consume(Semicolon, "Expected ';' after 'break'.")?;
             Ok(Stmt::Break)
         } else {

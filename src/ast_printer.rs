@@ -33,6 +33,18 @@ impl Printer {
             TrueLiteral => "true".to_string(),
             Variable { name } => format!("variable: {}", name.lexeme),
             Assign { name, value } => format!("assign: {} to {}", self.eval(value), name.lexeme),
+            Call {
+                arguments, callee, ..
+            } => format!(
+                "{}({})",
+                self.eval(callee),
+                arguments
+                    .iter()
+                    .map(|e| self.eval(e))
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                    .join(",")
+            ),
         }
     }
 }

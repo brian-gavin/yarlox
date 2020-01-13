@@ -19,4 +19,9 @@ pub enum Stmt {
         body: Box<Stmt>,
     },
     Break,
+    Function {
+        name: Token,
+        params: Vec<Token>,
+        body: Vec<Stmt>,
+    },
 }

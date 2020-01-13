@@ -28,9 +28,9 @@ macro_rules! execute_or_return_break {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter {
-            environment: Environment::new(),
-        }
+        let mut environment = Environment::new();
+        environment.define(String::from("clock"), Rc::new(LoxType::BuiltinFnClock));
+        Interpreter { environment }
     }
 
     pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
@@ -82,6 +82,7 @@ impl Interpreter {
                 }
             }
             Break => return Ok(ExecuteReturn::Break),
+            Function { .. } => unimplemented!(),
         }
         Ok(ExecuteReturn::Void)
     }
@@ -103,6 +104,32 @@ impl Interpreter {
                 let value = self.evaluate(value)?;
                 self.environment.assign(name, value.clone())?;
                 value
+            }
+            Call {
+                arguments,
+                callee,
+                paren,
+            } => {
+                let callee = self.evaluate(callee)?;
+                let mut evaluated_arguments = vec![];
+                for arg in arguments.iter() {
+                    evaluated_arguments.push(self.evaluate(arg)?);
+                }
+                if evaluated_arguments.len() != callee.arity() {
+                    return Err(Self::error(
+                        paren.clone(),
+                        format!(
+                            "Expected {} arguments but got {}.",
+                            callee.arity(),
+                            evaluated_arguments.len()
+                        )
+                        .as_str(),
+                    ));
+                }
+                match callee.call(self, &evaluated_arguments) {
+                    Ok(v) => v,
+                    Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
+                }
             }
         };
         Ok(res)
@@ -171,7 +198,7 @@ impl Interpreter {
                 if n2 != &0.0 {
                     Number(n1 / n2)
                 } else {
-                    return Err(self.error(op.clone(), "Divide by zero"));
+                    return Err(Self::error(op.clone(), "Divide by zero"));
                 }
             }
             (Number(n1), Minus, Number(n2)) => Number(n1 - n2),
@@ -193,18 +220,21 @@ impl Interpreter {
             | (_, Less, _)
             | (_, LessEqual, _) => return Err(self.number_error(op.clone())),
             (_, Plus, _) => {
-                return Err(self.error(op.clone(), "Operators must be numbers or strings"));
+                return Err(Self::error(
+                    op.clone(),
+                    "Operators must be numbers or strings",
+                ));
             }
-            (_, _, _) => return Err(self.error(op.clone(), "Unexpected binary expression")),
+            (_, _, _) => return Err(Self::error(op.clone(), "Unexpected binary expression")),
         };
         Ok(Rc::new(res))
     }
 
     fn number_error(&self, token: Token) -> RuntimeError {
-        self.error(token, "Operands must be numbers.")
+        Self::error(token, "Operands must be numbers.")
     }
 
-    fn error(&self, token: Token, msg: &str) -> RuntimeError {
+    pub fn error(token: Token, msg: &str) -> RuntimeError {
         let msg = msg.to_string();
         RuntimeError { token, msg }
     }

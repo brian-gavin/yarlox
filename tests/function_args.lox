@@ -1,0 +1,9 @@
+fun log(s) {
+    print s;
+}
+
+fun log_sum(a,b) {
+    log(a + b);
+}
+
+log_sum(1,2);

@@ -33,7 +33,7 @@ impl LoxType {
             LoxType::Nil => "nil".to_string(),
             LoxType::BuiltinFnClock => "<native fn>".to_string(),
             LoxType::LoxFunction { declaration } => match declaration {
-                Stmt::Function { name, .. } => name.lexeme.clone(),
+                Stmt::Function { name, .. } => format!("<fn {}>", name.lexeme),
                 _ => panic!("LoxType::Function::Stmt is not type Function."),
             },
         }

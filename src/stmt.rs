@@ -1,6 +1,6 @@
 use {expr::Expr, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),

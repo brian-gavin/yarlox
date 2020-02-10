@@ -2,18 +2,19 @@ use {
     environment::Environment,
     error::RuntimeError,
     expr::{Expr, Expr::*},
-    std::rc::Rc,
+    std::{cell::RefCell, rc::Rc},
     stmt::{Stmt, Stmt::*},
     token::Token,
     types::LoxType,
 };
 
 pub struct Interpreter {
-    environment: Environment,
+    globals: Rc<RefCell<Environment>>,
+    environment: Rc<RefCell<Environment>>,
 }
 
 #[derive(Debug, PartialEq)]
-enum ExecuteReturn {
+pub enum ExecuteReturn {
     Void,
     Break,
 }
@@ -28,9 +29,15 @@ macro_rules! execute_or_return_break {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        let mut environment = Environment::new();
-        environment.define(String::from("clock"), Rc::new(LoxType::BuiltinFnClock));
-        Interpreter { environment }
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        globals
+            .borrow_mut()
+            .define(String::from("clock"), Rc::new(LoxType::BuiltinFnClock));
+        let environment = globals.clone();
+        Interpreter {
+            globals,
+            environment,
+        }
     }
 
     pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
@@ -38,6 +45,24 @@ impl Interpreter {
             self.execute(stmt)?;
         }
         Ok(())
+    }
+
+    pub fn globals(&self) -> Rc<RefCell<Environment>> {
+        self.globals.clone()
+    }
+
+    pub fn execute_block(
+        &mut self,
+        stmts: &[Stmt],
+        environment: Environment,
+    ) -> Result<ExecuteReturn, RuntimeError> {
+        let old_environment = self.environment.clone();
+        self.environment = Rc::new(RefCell::new(environment));
+        for stmt in stmts.iter() {
+            execute_or_return_break!(self, stmt);
+        }
+        self.environment = old_environment;
+        Ok(ExecuteReturn::Void)
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
@@ -53,15 +78,14 @@ impl Interpreter {
                     Some(expr) => self.evaluate(expr)?,
                     None => Rc::new(LoxType::Nil),
                 };
-                self.environment.define(name.lexeme.clone(), val);
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), val);
                 debug!("defining {}: env: {:?}", name.lexeme, self.environment);
             }
             Block(stmts) => {
-                self.environment.push_scope();
-                for stmt in stmts.iter() {
-                    execute_or_return_break!(self, stmt);
-                }
-                self.environment.pop_scope();
+                let environment = Environment::from(self.environment.clone());
+                return self.execute_block(stmts, environment);
             }
             If {
                 condition,
@@ -82,7 +106,14 @@ impl Interpreter {
                 }
             }
             Break => return Ok(ExecuteReturn::Break),
-            Function { .. } => unimplemented!(),
+            Function { name, .. } => {
+                let func = LoxType::LoxFunction {
+                    declaration: stmt.clone(),
+                };
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), Rc::new(func));
+            }
         }
         Ok(ExecuteReturn::Void)
     }
@@ -99,10 +130,10 @@ impl Interpreter {
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Logical { left, op, right } => self.evaluate_logical(left, op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
-            Variable { name } => self.environment.get(name)?,
+            Variable { name } => self.environment.borrow().get(name)?,
             Assign { name, value } => {
                 let value = self.evaluate(value)?;
-                self.environment.assign(name, value.clone())?;
+                self.environment.borrow_mut().assign(name, value.clone())?;
                 value
             }
             Call {

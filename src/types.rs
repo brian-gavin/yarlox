@@ -1,6 +1,9 @@
 use {
+    environment::Environment,
+    error::LoxErrorTrait,
     interpreter::Interpreter,
     std::{error::Error, rc::Rc, time},
+    stmt::Stmt,
 };
 
 #[derive(Clone, Debug)]
@@ -10,6 +13,7 @@ pub enum LoxType {
     Boolean(bool),
     Nil,
     BuiltinFnClock,
+    LoxFunction { declaration: Stmt },
 }
 
 impl LoxType {
@@ -28,18 +32,34 @@ impl LoxType {
             LoxType::Boolean(b) => b.to_string(),
             LoxType::Nil => "nil".to_string(),
             LoxType::BuiltinFnClock => "<native fn>".to_string(),
+            LoxType::LoxFunction { declaration } => match declaration {
+                Stmt::Function { name, .. } => name.lexeme.clone(),
+                _ => panic!("LoxType::Function::Stmt is not type Function."),
+            },
         }
     }
 
     pub fn call(
         &self,
-        _intr: &Interpreter,
-        _arguments: &[Rc<LoxType>],
+        intr: &mut Interpreter,
+        arguments: &[Rc<LoxType>],
     ) -> Result<Rc<LoxType>, String> {
         match self {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e.description()))
             }
+            LoxType::LoxFunction { declaration } => match declaration {
+                Stmt::Function { params, body, .. } => {
+                    let mut env = Environment::from(intr.globals());
+                    for (i, param) in params.iter().enumerate() {
+                        env.define(param.lexeme.clone(), arguments[i].clone());
+                    }
+                    intr.execute_block(body, env)
+                        .map_err(|e| e.message())
+                        .map(|_| Rc::new(LoxType::Nil))
+                }
+                _ => panic!("LoxType::Function::Stmt is not type Function."),
+            },
             _ => Err(String::from("Can only call functions and classes.")),
         }
     }
@@ -47,6 +67,10 @@ impl LoxType {
     pub fn arity(&self) -> usize {
         match self {
             LoxType::BuiltinFnClock => 0,
+            LoxType::LoxFunction { declaration } => match declaration {
+                Stmt::Function { params, .. } => params.len(),
+                _ => panic!("LoxType::Function::Stmt is not type Function."),
+            },
             _ => panic!("Checking arity of type that is not a function or class."),
         }
     }

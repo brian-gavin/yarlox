@@ -401,7 +401,8 @@ impl Parser {
 
         if self.peek().ttype != RightParen {
             arguments.push(self.expression()?);
-            while self.advance().ttype == Comma {
+            while self.peek().ttype == Comma {
+                self.advance();
                 if arguments.len() >= 255 {
                     self.error(self.peek(), "Cannot have more than 255 arguments.")
                         .report();

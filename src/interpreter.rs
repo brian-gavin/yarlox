@@ -20,10 +20,14 @@ pub enum ExecuteReturn {
     Return(Rc<LoxType>),
 }
 
-macro_rules! execute_or_return_break {
+macro_rules! execute_handle_return_or_break {
     ($self:ident, $stmt:ident) => {
-        if $self.execute($stmt)? == ExecuteReturn::Break {
-            return Ok(ExecuteReturn::Break);
+        let rv = $self.execute($stmt)?;
+        match rv {
+            ExecuteReturn::Break | ExecuteReturn::Return(_) => {
+                return Ok(rv);
+            }
+            _ => (),
         }
     };
 }
@@ -101,15 +105,18 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.evaluate(condition)?.is_truthy() {
-                    execute_or_return_break!(self, then_branch);
+                    execute_handle_return_or_break!(self, then_branch);
                 } else if let Some(else_branch) = else_branch {
-                    execute_or_return_break!(self, else_branch);
+                    execute_handle_return_or_break!(self, else_branch);
                 }
             }
             While { condition, body } => {
                 while self.evaluate(condition)?.is_truthy() {
-                    if self.execute(body)? == ExecuteReturn::Break {
-                        break;
+                    let rv = self.execute(body)?;
+                    match rv {
+                        ExecuteReturn::Break => break,
+                        ExecuteReturn::Return(_) => return Ok(rv),
+                        _ => (),
                     }
                 }
             }

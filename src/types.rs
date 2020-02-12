@@ -1,7 +1,7 @@
 use {
     environment::Environment,
     error::LoxErrorTrait,
-    interpreter::Interpreter,
+    interpreter::{ExecuteReturn, Interpreter},
     std::{error::Error, rc::Rc, time},
     stmt::Stmt,
 };
@@ -56,7 +56,10 @@ impl LoxType {
                     }
                     intr.execute_block(body, env)
                         .map_err(|e| e.message())
-                        .map(|_| Rc::new(LoxType::Nil))
+                        .map(|ret| match ret {
+                            ExecuteReturn::Return(val) => val,
+                            _ => Rc::new(LoxType::Nil),
+                        })
                 }
                 _ => panic!("LoxType::Function::Stmt is not type Function."),
             },

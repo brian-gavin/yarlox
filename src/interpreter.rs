@@ -17,6 +17,7 @@ pub struct Interpreter {
 pub enum ExecuteReturn {
     Void,
     Break,
+    Return(Rc<LoxType>),
 }
 
 macro_rules! execute_or_return_break {
@@ -58,11 +59,18 @@ impl Interpreter {
     ) -> Result<ExecuteReturn, RuntimeError> {
         let old_environment = self.environment.clone();
         self.environment = Rc::new(RefCell::new(environment));
+        let mut rv = ExecuteReturn::Void;
         for stmt in stmts.iter() {
-            execute_or_return_break!(self, stmt);
+            rv = self.execute(stmt)?;
+            match rv {
+                ExecuteReturn::Return(_) | ExecuteReturn::Break => {
+                    break;
+                }
+                _ => (),
+            };
         }
         self.environment = old_environment;
-        Ok(ExecuteReturn::Void)
+        Ok(rv)
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
@@ -113,6 +121,12 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), Rc::new(func));
+            }
+            Return(expr) => {
+                return Ok(ExecuteReturn::Return(match expr {
+                    Some(expr) => self.evaluate(expr)?,
+                    None => Rc::new(LoxType::Nil),
+                }))
             }
         }
         Ok(ExecuteReturn::Void)

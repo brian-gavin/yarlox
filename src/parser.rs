@@ -177,6 +177,10 @@ impl Parser {
                 self.advance();
                 self.break_statement()
             }
+            Return => {
+                self.advance();
+                self.return_statement()
+            }
             _ => self.expression_statement(),
         }
     }
@@ -336,6 +340,16 @@ impl Parser {
         } else {
             Err(self.error(self.previous(), "Must be in a loop to 'break'."))
         }
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expr = if self.peek().ttype != Semicolon {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(Semicolon, "Expected ';' after 'return'.")?;
+        Ok(Stmt::Return(expr))
     }
 
     fn or(&mut self) -> Result<Expr, ParseError> {

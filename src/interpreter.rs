@@ -52,6 +52,7 @@ impl Interpreter {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn globals(&self) -> Rc<RefCell<Environment>> {
         self.globals.clone()
     }
@@ -124,6 +125,7 @@ impl Interpreter {
             Function { name, .. } => {
                 let func = LoxType::LoxFunction {
                     declaration: stmt.clone(),
+                    closure: self.environment.clone(),
                 };
                 self.environment
                     .borrow_mut()

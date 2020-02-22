@@ -2,7 +2,7 @@ use {
     environment::Environment,
     error::LoxErrorTrait,
     interpreter::{ExecuteReturn, Interpreter},
-    std::{error::Error, rc::Rc, time},
+    std::{cell::RefCell, error::Error, rc::Rc, time},
     stmt::Stmt,
 };
 
@@ -13,7 +13,10 @@ pub enum LoxType {
     Boolean(bool),
     Nil,
     BuiltinFnClock,
-    LoxFunction { declaration: Stmt },
+    LoxFunction {
+        declaration: Stmt,
+        closure: Rc<RefCell<Environment>>,
+    },
 }
 
 impl LoxType {
@@ -32,10 +35,11 @@ impl LoxType {
             LoxType::Boolean(b) => b.to_string(),
             LoxType::Nil => "nil".to_string(),
             LoxType::BuiltinFnClock => "<native fn>".to_string(),
-            LoxType::LoxFunction { declaration } => match declaration {
-                Stmt::Function { name, .. } => format!("<fn {}>", name.lexeme),
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
+            LoxType::LoxFunction {
+                declaration: Stmt::Function { name, .. },
+                ..
+            } => format!("<fn {}>", name.lexeme),
+            LoxType::LoxFunction { .. } => panic!("LoxType::Function::Stmt is not type Function."),
         }
     }
 
@@ -48,21 +52,22 @@ impl LoxType {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e.description()))
             }
-            LoxType::LoxFunction { declaration } => match declaration {
-                Stmt::Function { params, body, .. } => {
-                    let mut env = Environment::from(intr.globals());
-                    for (i, param) in params.iter().enumerate() {
-                        env.define(param.lexeme.clone(), arguments[i].clone());
-                    }
-                    intr.execute_block(body, env)
-                        .map_err(|e| e.message())
-                        .map(|ret| match ret {
-                            ExecuteReturn::Return(val) => val,
-                            _ => Rc::new(LoxType::Nil),
-                        })
+            LoxType::LoxFunction {
+                declaration: Stmt::Function { params, body, .. },
+                closure,
+            } => {
+                let mut env = Environment::from(closure.clone());
+                for (i, param) in params.iter().enumerate() {
+                    env.define(param.lexeme.clone(), arguments[i].clone());
                 }
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
+                intr.execute_block(body, env)
+                    .map_err(|e| e.message())
+                    .map(|ret| match ret {
+                        ExecuteReturn::Return(val) => val,
+                        _ => Rc::new(LoxType::Nil),
+                    })
+            }
+            LoxType::LoxFunction { .. } => panic!("LoxType::Function::Stmt is not type Function."),
             _ => Err(String::from("Can only call functions and classes.")),
         }
     }
@@ -70,10 +75,11 @@ impl LoxType {
     pub fn arity(&self) -> usize {
         match self {
             LoxType::BuiltinFnClock => 0,
-            LoxType::LoxFunction { declaration } => match declaration {
-                Stmt::Function { params, .. } => params.len(),
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
+            LoxType::LoxFunction {
+                declaration: Stmt::Function { params, .. },
+                ..
+            } => params.len(),
+            LoxType::LoxFunction { .. } => panic!("LoxType::Function::Stmt is not type Function."),
             _ => panic!("Checking arity of type that is not a function or class."),
         }
     }

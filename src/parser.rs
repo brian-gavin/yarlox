@@ -80,6 +80,10 @@ impl Parser {
 
     fn declaration(&mut self) -> Option<Stmt> {
         let res = match self.peek().ttype {
+            Fun => {
+                self.advance();
+                self.function("function")
+            }
             Var => {
                 self.advance();
                 self.var_declaration()
@@ -93,6 +97,42 @@ impl Parser {
         } else {
             Some(res.expect("Passed error check but failed."))
         }
+    }
+
+    fn function(&mut self, kind: &str) -> Result<Stmt, ParseError> {
+        let name = self
+            .consume(Ident, format!("Expect a {} name.", kind).as_str())?
+            .clone();
+        self.consume(
+            LeftParen,
+            format!("Expect '(' after {} name.", kind).as_str(),
+        )?;
+        let mut parameters = vec![];
+        if self.peek().ttype != RightParen {
+            parameters.push(self.consume(Ident, "Expect parameter name.")?.clone());
+            while self.peek().ttype == Comma {
+                self.advance();
+                if parameters.len() >= 255 {
+                    self.error(self.peek(), "Cannot have more  than 255 parameters.")
+                        .report();
+                }
+                parameters.push(self.consume(Ident, "Expect parameter name.")?.clone());
+            }
+        }
+        self.consume(RightParen, "Expect ')' after parameters.")?;
+        self.consume(
+            LeftBrace,
+            format!("Expect '{{' before {} body", kind).as_str(),
+        )?;
+        let body = match self.block()? {
+            Stmt::Block(stmts) => stmts,
+            _ => panic!("block() did not return a Block variant."),
+        };
+        Ok(Stmt::Function {
+            params: parameters,
+            name,
+            body,
+        })
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
@@ -136,6 +176,10 @@ impl Parser {
             Break => {
                 self.advance();
                 self.break_statement()
+            }
+            Return => {
+                self.advance();
+                self.return_statement()
             }
             _ => self.expression_statement(),
         }
@@ -298,6 +342,16 @@ impl Parser {
         }
     }
 
+    fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expr = if self.peek().ttype != Semicolon {
+            Some(Box::new(self.expression()?))
+        } else {
+            None
+        };
+        self.consume(Semicolon, "Expected ';' after 'return'.")?;
+        Ok(Stmt::Return(expr))
+    }
+
     fn or(&mut self) -> Result<Expr, ParseError> {
         left_associative_binary_expr!(self, and, Logical, Or)
     }
@@ -338,8 +392,46 @@ impl Parser {
                 let right = Box::new(self.unary()?);
                 Ok(Expr::Unary { op, right })
             }
-            _ => self.primary(),
+            _ => self.call(),
         }
+    }
+
+    fn call(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.primary()?;
+        loop {
+            match self.peek().ttype {
+                LeftParen => {
+                    self.advance();
+                    expr = self.finish_call(expr)?;
+                }
+                _ => break,
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, expr: Expr) -> Result<Expr, ParseError> {
+        let mut arguments = vec![];
+
+        if self.peek().ttype != RightParen {
+            arguments.push(self.expression()?);
+            while self.peek().ttype == Comma {
+                self.advance();
+                if arguments.len() >= 255 {
+                    self.error(self.peek(), "Cannot have more than 255 arguments.")
+                        .report();
+                }
+                arguments.push(self.expression()?);
+            }
+        }
+
+        let paren = self.consume(RightParen, "Expected ')' after arguments.")?;
+
+        Ok(Expr::Call {
+            arguments,
+            callee: Box::new(expr),
+            paren: paren.clone(),
+        })
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {

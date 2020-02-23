@@ -1,6 +1,6 @@
 use {ast_printer::Printer, std::fmt, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,
@@ -28,6 +28,11 @@ pub enum Expr {
     Assign {
         name: Token,
         value: Box<Expr>,
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
     },
 }
 

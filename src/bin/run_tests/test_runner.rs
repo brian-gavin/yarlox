@@ -50,7 +50,13 @@ pub fn test_runner_work(test: TestPair) -> Result<String, String> {
     if out == expected_out {
         Ok(report_success(&test))
     } else {
-        Err(report_assertion_error(&test, &expected_out, &out))
+        let mut err = String::new();
+        child
+            .stderr
+            .expect("Child stderr was None")
+            .read_to_string(&mut err)
+            .map_err(|e| e.to_string())?;
+        Err(report_assertion_error(&test, &expected_out, &out, &err))
     }
 }
 
@@ -58,6 +64,13 @@ fn report_success(test: &TestPair) -> String {
     Color::Green
         .paint(format!("{}: Success!", test.test_name().to_string()))
         .to_string()
+}
+
+fn parse_stderr_lox_error(stderr: &str) -> String {
+    stderr
+        .lines()
+        .filter(|s| s.starts_with('['))
+        .collect::<String>()
 }
 
 fn report_exit_status_error(test: &TestPair, child: &mut process::Child) -> io::Result<String> {
@@ -71,21 +84,19 @@ fn report_exit_status_error(test: &TestPair, child: &mut process::Child) -> io::
         .paint(format!(
             "{}: FAILED! stderr: {}",
             test.test_name(),
-            child_stderr
-                .lines()
-                .filter(|s| s.starts_with('['))
-                .collect::<String>(),
+            parse_stderr_lox_error(&child_stderr),
         ))
         .to_string())
 }
 
-fn report_assertion_error(test: &TestPair, expected: &str, got: &str) -> String {
+fn report_assertion_error(test: &TestPair, expected: &str, got: &str, err: &str) -> String {
     Color::Red
         .paint(format!(
-            "{}: FAILED! Expected {} Got {}",
+            "{}: FAILED! Expected '{}' Got '{}' {{stderr: '{}'}}",
             test.test_name(),
             expected.replace('\n', "\\n"),
             got.replace('\n', "\\n"),
+            parse_stderr_lox_error(&err),
         ))
         .to_string()
 }

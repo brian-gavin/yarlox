@@ -1,6 +1,6 @@
 use {expr::Expr, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),
@@ -19,4 +19,10 @@ pub enum Stmt {
         body: Box<Stmt>,
     },
     Break,
+    Function {
+        name: Token,
+        params: Vec<Token>,
+        body: Vec<Stmt>,
+    },
+    Return(Option<Box<Expr>>),
 }

@@ -2,34 +2,46 @@ use {
     environment::Environment,
     error::RuntimeError,
     expr::{Expr, Expr::*},
-    std::rc::Rc,
+    std::{cell::RefCell, rc::Rc},
     stmt::{Stmt, Stmt::*},
     token::Token,
     types::LoxType,
 };
 
 pub struct Interpreter {
-    environment: Environment,
+    globals: Rc<RefCell<Environment>>,
+    environment: Rc<RefCell<Environment>>,
 }
 
 #[derive(Debug, PartialEq)]
-enum ExecuteReturn {
+pub enum ExecuteReturn {
     Void,
     Break,
+    Return(Rc<LoxType>),
 }
 
-macro_rules! execute_or_return_break {
+macro_rules! execute_handle_return_or_break {
     ($self:ident, $stmt:ident) => {
-        if $self.execute($stmt)? == ExecuteReturn::Break {
-            return Ok(ExecuteReturn::Break);
+        let rv = $self.execute($stmt)?;
+        match rv {
+            ExecuteReturn::Break | ExecuteReturn::Return(_) => {
+                return Ok(rv);
+            }
+            _ => (),
         }
     };
 }
 
 impl Interpreter {
     pub fn new() -> Interpreter {
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        globals
+            .borrow_mut()
+            .define(String::from("clock"), Rc::new(LoxType::BuiltinFnClock));
+        let environment = globals.clone();
         Interpreter {
-            environment: Environment::new(),
+            globals,
+            environment,
         }
     }
 
@@ -38,6 +50,32 @@ impl Interpreter {
             self.execute(stmt)?;
         }
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn globals(&self) -> Rc<RefCell<Environment>> {
+        self.globals.clone()
+    }
+
+    pub fn execute_block(
+        &mut self,
+        stmts: &[Stmt],
+        environment: Environment,
+    ) -> Result<ExecuteReturn, RuntimeError> {
+        let old_environment = self.environment.clone();
+        self.environment = Rc::new(RefCell::new(environment));
+        let mut rv = ExecuteReturn::Void;
+        for stmt in stmts.iter() {
+            rv = self.execute(stmt)?;
+            match rv {
+                ExecuteReturn::Return(_) | ExecuteReturn::Break => {
+                    break;
+                }
+                _ => (),
+            };
+        }
+        self.environment = old_environment;
+        Ok(rv)
     }
 
     fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
@@ -53,15 +91,14 @@ impl Interpreter {
                     Some(expr) => self.evaluate(expr)?,
                     None => Rc::new(LoxType::Nil),
                 };
-                self.environment.define(name.lexeme.clone(), val);
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), val);
                 debug!("defining {}: env: {:?}", name.lexeme, self.environment);
             }
             Block(stmts) => {
-                self.environment.push_scope();
-                for stmt in stmts.iter() {
-                    execute_or_return_break!(self, stmt);
-                }
-                self.environment.pop_scope();
+                let environment = Environment::from(self.environment.clone());
+                return self.execute_block(stmts, environment);
             }
             If {
                 condition,
@@ -69,19 +106,37 @@ impl Interpreter {
                 else_branch,
             } => {
                 if self.evaluate(condition)?.is_truthy() {
-                    execute_or_return_break!(self, then_branch);
+                    execute_handle_return_or_break!(self, then_branch);
                 } else if let Some(else_branch) = else_branch {
-                    execute_or_return_break!(self, else_branch);
+                    execute_handle_return_or_break!(self, else_branch);
                 }
             }
             While { condition, body } => {
                 while self.evaluate(condition)?.is_truthy() {
-                    if self.execute(body)? == ExecuteReturn::Break {
-                        break;
+                    let rv = self.execute(body)?;
+                    match rv {
+                        ExecuteReturn::Break => break,
+                        ExecuteReturn::Return(_) => return Ok(rv),
+                        _ => (),
                     }
                 }
             }
             Break => return Ok(ExecuteReturn::Break),
+            Function { name, .. } => {
+                let func = LoxType::LoxFunction {
+                    declaration: stmt.clone(),
+                    closure: self.environment.clone(),
+                };
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), Rc::new(func));
+            }
+            Return(expr) => {
+                return Ok(ExecuteReturn::Return(match expr {
+                    Some(expr) => self.evaluate(expr)?,
+                    None => Rc::new(LoxType::Nil),
+                }))
+            }
         }
         Ok(ExecuteReturn::Void)
     }
@@ -98,11 +153,37 @@ impl Interpreter {
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Logical { left, op, right } => self.evaluate_logical(left, op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
-            Variable { name } => self.environment.get(name)?,
+            Variable { name } => self.environment.borrow().get(name)?,
             Assign { name, value } => {
                 let value = self.evaluate(value)?;
-                self.environment.assign(name, value.clone())?;
+                self.environment.borrow_mut().assign(name, value.clone())?;
                 value
+            }
+            Call {
+                arguments,
+                callee,
+                paren,
+            } => {
+                let callee = self.evaluate(callee)?;
+                let mut evaluated_arguments = vec![];
+                for arg in arguments.iter() {
+                    evaluated_arguments.push(self.evaluate(arg)?);
+                }
+                if evaluated_arguments.len() != callee.arity() {
+                    return Err(Self::error(
+                        paren.clone(),
+                        format!(
+                            "Expected {} arguments but got {}.",
+                            callee.arity(),
+                            evaluated_arguments.len()
+                        )
+                        .as_str(),
+                    ));
+                }
+                match callee.call(self, &evaluated_arguments) {
+                    Ok(v) => v,
+                    Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
+                }
             }
         };
         Ok(res)
@@ -171,7 +252,7 @@ impl Interpreter {
                 if n2 != &0.0 {
                     Number(n1 / n2)
                 } else {
-                    return Err(self.error(op.clone(), "Divide by zero"));
+                    return Err(Self::error(op.clone(), "Divide by zero"));
                 }
             }
             (Number(n1), Minus, Number(n2)) => Number(n1 - n2),
@@ -193,18 +274,21 @@ impl Interpreter {
             | (_, Less, _)
             | (_, LessEqual, _) => return Err(self.number_error(op.clone())),
             (_, Plus, _) => {
-                return Err(self.error(op.clone(), "Operators must be numbers or strings"));
+                return Err(Self::error(
+                    op.clone(),
+                    "Operators must be numbers or strings",
+                ));
             }
-            (_, _, _) => return Err(self.error(op.clone(), "Unexpected binary expression")),
+            (_, _, _) => return Err(Self::error(op.clone(), "Unexpected binary expression")),
         };
         Ok(Rc::new(res))
     }
 
     fn number_error(&self, token: Token) -> RuntimeError {
-        self.error(token, "Operands must be numbers.")
+        Self::error(token, "Operands must be numbers.")
     }
 
-    fn error(&self, token: Token, msg: &str) -> RuntimeError {
+    pub fn error(token: Token, msg: &str) -> RuntimeError {
         let msg = msg.to_string();
         RuntimeError { token, msg }
     }

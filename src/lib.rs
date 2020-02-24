@@ -10,6 +10,7 @@ mod error;
 mod expr;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod stmt;
 mod token;
@@ -25,6 +26,7 @@ use {
         fs,
         io::{self, prelude::*},
     },
+    resolver::Resolver,
 };
 
 pub fn run_file(file_name: &str) -> Result<(), io::Error> {
@@ -64,13 +66,15 @@ pub fn run_prompt() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn run(interpreter: &mut Interpreter, source: String, repl: bool) -> Result<(), LoxError> {
+fn run<'a>(interpreter: &mut Interpreter<'a>, source: String, repl: bool) -> Result<(), LoxError> {
     let scanner = Scanner::new(&source);
     let stmts: Vec<stmt::Stmt> = Parser::new(scanner, repl)?
         .parse()?
         .into_iter()
         .filter_map(|stmt| stmt)
         .collect();
+    let mut resolver = Resolver::new(interpreter);
+    resolver.resolve(&stmts)?;
     interpreter.interpret(&stmts)?;
     Ok(())
 }

@@ -7,19 +7,19 @@ use {
 };
 
 #[derive(Clone, Debug)]
-pub enum LoxType {
+pub enum LoxType<'a> {
     Number(f64),
     LoxString(String),
     Boolean(bool),
     Nil,
     BuiltinFnClock,
     LoxFunction {
-        declaration: Stmt,
-        closure: Rc<RefCell<Environment>>,
+        declaration: &'a Stmt,
+        closure: Rc<RefCell<Environment<'a>>>,
     },
 }
 
-impl LoxType {
+impl<'a> LoxType<'a> {
     pub fn is_truthy(&self) -> bool {
         match *self {
             LoxType::Nil => false,
@@ -45,22 +45,22 @@ impl LoxType {
 
     pub fn call(
         &self,
-        intr: &mut Interpreter,
-        arguments: &[Rc<LoxType>],
-    ) -> Result<Rc<LoxType>, String> {
+        intr: &mut Interpreter<'a>,
+        arguments: &[Rc<LoxType<'a>>],
+    ) -> Result<Rc<LoxType<'a>>, String> {
         match self {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e.description()))
             }
             LoxType::LoxFunction {
-                declaration: Stmt::Function { params, body, .. },
+                declaration: &Stmt::Function { params, body, .. },
                 closure,
             } => {
                 let mut env = Environment::from(closure.clone());
                 for (i, param) in params.iter().enumerate() {
                     env.define(param.lexeme.clone(), arguments[i].clone());
                 }
-                intr.execute_block(body, env)
+                intr.execute_block(&body, env)
                     .map_err(|e| e.message())
                     .map(|ret| match ret {
                         ExecuteReturn::Return(val) => val,
@@ -85,14 +85,14 @@ impl LoxType {
     }
 }
 
-fn builtin_fn_clock() -> Result<Rc<LoxType>, time::SystemTimeError> {
+fn builtin_fn_clock<'a>() -> Result<Rc<LoxType<'a>>, time::SystemTimeError> {
     let current_time = time::SystemTime::now()
         .duration_since(time::UNIX_EPOCH)?
         .as_secs_f64();
     Ok(Rc::new(LoxType::Number(current_time)))
 }
 
-impl PartialEq for LoxType {
+impl<'a> PartialEq for LoxType<'a> {
     fn eq(&self, other: &LoxType) -> bool {
         use types::LoxType::*;
 

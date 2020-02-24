@@ -72,7 +72,6 @@ impl Parser {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
             let decl = self.declaration();
-            debug!("pushing decl {:?}", decl);
             stmts.push(decl);
         }
         Ok(stmts)
@@ -113,8 +112,7 @@ impl Parser {
             while self.peek().ttype == Comma {
                 self.advance();
                 if parameters.len() >= 255 {
-                    self.error(self.peek(), "Cannot have more  than 255 parameters.")
-                        .report();
+                    Self::error(self.peek(), "Cannot have more  than 255 parameters.").report();
                 }
                 parameters.push(self.consume(Ident, "Expect parameter name.")?.clone());
             }
@@ -313,7 +311,6 @@ impl Parser {
         use expr::Expr::{Assign, Variable};
 
         let expr = self.or()?;
-        debug!("assignment parsed: {:?}", expr);
         match self.peek().ttype {
             Equal => {
                 self.advance();
@@ -323,7 +320,7 @@ impl Parser {
                 let assign = match expr {
                     Variable { name } => Assign { name, value },
                     _ => {
-                        self.error(&equals, "Invalid assignment target").report();
+                        Self::error(&equals, "Invalid assignment target").report();
                         expr
                     }
                 };
@@ -338,18 +335,25 @@ impl Parser {
             self.consume(Semicolon, "Expected ';' after 'break'.")?;
             Ok(Stmt::Break)
         } else {
-            Err(self.error(self.previous(), "Must be in a loop to 'break'."))
+            Err(Self::error(
+                self.previous(),
+                "Must be in a loop to 'break'.",
+            ))
         }
     }
 
     fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let keyword = self.previous().clone();
         let expr = if self.peek().ttype != Semicolon {
             Some(Box::new(self.expression()?))
         } else {
             None
         };
         self.consume(Semicolon, "Expected ';' after 'return'.")?;
-        Ok(Stmt::Return(expr))
+        Ok(Stmt::Return{
+            keyword: keyword.clone(),
+            expr
+        })
     }
 
     fn or(&mut self) -> Result<Expr, ParseError> {
@@ -418,8 +422,7 @@ impl Parser {
             while self.peek().ttype == Comma {
                 self.advance();
                 if arguments.len() >= 255 {
-                    self.error(self.peek(), "Cannot have more than 255 arguments.")
-                        .report();
+                    Self::error(self.peek(), "Cannot have more than 255 arguments.").report();
                 }
                 arguments.push(self.expression()?);
             }
@@ -452,7 +455,7 @@ impl Parser {
                 self.advance();
                 let number = match self.previous().literal.parse::<f64>() {
                     Ok(n) => n,
-                    Err(e) => return Err(self.error(self.previous(), e.to_string().as_str())),
+                    Err(e) => return Err(Self::error(self.previous(), e.to_string().as_str())),
                 };
                 Expr::NumberLiteral(number)
             }
@@ -474,7 +477,7 @@ impl Parser {
             }
             _ => {
                 let peeked = self.peek();
-                return Err(self.error(peeked, "Expected an expression."));
+                return Err(Self::error(peeked, "Expected an expression."));
             }
         })
     }
@@ -484,11 +487,11 @@ impl Parser {
             Ok(self.advance())
         } else {
             let peeked = self.peek();
-            Err(self.error(peeked, error_msg))
+            Err(Self::error(peeked, error_msg))
         }
     }
 
-    fn error(&self, token: &Token, msg: &str) -> ParseError {
+    pub fn error(token: &Token, msg: &str) -> ParseError {
         if token.ttype == EOF {
             ParseError::new(token.line, "at end".to_string(), msg.to_string())
         } else {
@@ -517,7 +520,6 @@ impl Parser {
             self.current += 1;
         }
         let rv = self.previous();
-        debug!("advance to: {:?}", *rv);
         rv
         // self.previous()
     }

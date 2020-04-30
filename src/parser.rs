@@ -1,6 +1,6 @@
 use {
     error::{LoxErrorTrait, ParseError},
-    expr::Expr,
+    expr::{Expr, ExprKind},
     scanner::Scanner,
     std::f64,
     stmt::Stmt,
@@ -25,11 +25,11 @@ macro_rules! left_associative_binary_expr {
         } {
             let op = $self.previous().clone();
             let right = Box::new($self.$higher_prec()?);
-            expr = Expr::$expr_type {
+            expr = Expr::of(ExprKind::$expr_type {
                 left: Box::new(expr),
                 op,
                 right,
-            };
+            });
         }
         Ok(expr)
     }};
@@ -72,7 +72,6 @@ impl Parser {
         let mut stmts = Vec::new();
         while !self.is_at_end() {
             let decl = self.declaration();
-            debug!("pushing decl {:?}", decl);
             stmts.push(decl);
         }
         Ok(stmts)
@@ -113,8 +112,7 @@ impl Parser {
             while self.peek().ttype == Comma {
                 self.advance();
                 if parameters.len() >= 255 {
-                    self.error(self.peek(), "Cannot have more  than 255 parameters.")
-                        .report();
+                    Self::error(self.peek(), "Cannot have more  than 255 parameters.").report();
                 }
                 parameters.push(self.consume(Ident, "Expect parameter name.")?.clone());
             }
@@ -204,7 +202,7 @@ impl Parser {
         let condition = if self.peek().ttype != Semicolon {
             Box::new(self.expression()?)
         } else {
-            Box::new(Expr::TrueLiteral)
+            Box::new(Expr::of(ExprKind::TrueLiteral))
         };
         self.consume(Semicolon, "Expected ';' after loop condition.")?;
         let increment = if self.peek().ttype != RightParen {
@@ -310,20 +308,19 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        use expr::Expr::{Assign, Variable};
+        use expr::ExprKind::{Assign, Variable};
 
         let expr = self.or()?;
-        debug!("assignment parsed: {:?}", expr);
         match self.peek().ttype {
             Equal => {
                 self.advance();
                 let equals = self.previous().clone();
                 let value = Box::new(self.assignment()?);
 
-                let assign = match expr {
-                    Variable { name } => Assign { name, value },
+                let assign = match expr.kind {
+                    Variable { name } => Expr::of(Assign { name, value }),
                     _ => {
-                        self.error(&equals, "Invalid assignment target").report();
+                        Self::error(&equals, "Invalid assignment target").report();
                         expr
                     }
                 };
@@ -338,18 +335,25 @@ impl Parser {
             self.consume(Semicolon, "Expected ';' after 'break'.")?;
             Ok(Stmt::Break)
         } else {
-            Err(self.error(self.previous(), "Must be in a loop to 'break'."))
+            Err(Self::error(
+                self.previous(),
+                "Must be in a loop to 'break'.",
+            ))
         }
     }
 
     fn return_statement(&mut self) -> Result<Stmt, ParseError> {
+        let keyword = self.previous().clone();
         let expr = if self.peek().ttype != Semicolon {
             Some(Box::new(self.expression()?))
         } else {
             None
         };
         self.consume(Semicolon, "Expected ';' after 'return'.")?;
-        Ok(Stmt::Return(expr))
+        Ok(Stmt::Return {
+            keyword: keyword.clone(),
+            expr,
+        })
     }
 
     fn or(&mut self) -> Result<Expr, ParseError> {
@@ -390,7 +394,7 @@ impl Parser {
                 self.advance();
                 let op = self.previous().clone();
                 let right = Box::new(self.unary()?);
-                Ok(Expr::Unary { op, right })
+                Ok(Expr::of(ExprKind::Unary { op, right }))
             }
             _ => self.call(),
         }
@@ -418,8 +422,7 @@ impl Parser {
             while self.peek().ttype == Comma {
                 self.advance();
                 if arguments.len() >= 255 {
-                    self.error(self.peek(), "Cannot have more than 255 arguments.")
-                        .report();
+                    Self::error(self.peek(), "Cannot have more than 255 arguments.").report();
                 }
                 arguments.push(self.expression()?);
             }
@@ -427,54 +430,54 @@ impl Parser {
 
         let paren = self.consume(RightParen, "Expected ')' after arguments.")?;
 
-        Ok(Expr::Call {
+        Ok(Expr::of(ExprKind::Call {
             arguments,
             callee: Box::new(expr),
             paren: paren.clone(),
-        })
+        }))
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         Ok(match self.peek().ttype {
             False => {
                 self.advance();
-                Expr::FalseLiteral
+                Expr::of(ExprKind::FalseLiteral)
             }
             True => {
                 self.advance();
-                Expr::TrueLiteral
+                Expr::of(ExprKind::TrueLiteral)
             }
             Nil => {
                 self.advance();
-                Expr::NilLiteral
+                Expr::of(ExprKind::NilLiteral)
             }
             Number => {
                 self.advance();
                 let number = match self.previous().literal.parse::<f64>() {
                     Ok(n) => n,
-                    Err(e) => return Err(self.error(self.previous(), e.to_string().as_str())),
+                    Err(e) => return Err(Self::error(self.previous(), e.to_string().as_str())),
                 };
-                Expr::NumberLiteral(number)
+                Expr::of(ExprKind::NumberLiteral(number))
             }
             StringLit => {
                 self.advance();
-                Expr::StringLiteral(self.previous().literal.clone())
+                Expr::of(ExprKind::StringLiteral(self.previous().literal.clone()))
             }
             LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
                 let _ = self.consume(RightParen, "Expect ')' after expression.")?;
-                Expr::Grouping(Box::new(expr))
+                Expr::of(ExprKind::Grouping(Box::new(expr)))
             }
             Ident => {
                 self.advance();
-                Expr::Variable {
+                Expr::of(ExprKind::Variable {
                     name: self.previous().clone(),
-                }
+                })
             }
             _ => {
                 let peeked = self.peek();
-                return Err(self.error(peeked, "Expected an expression."));
+                return Err(Self::error(peeked, "Expected an expression."));
             }
         })
     }
@@ -484,11 +487,11 @@ impl Parser {
             Ok(self.advance())
         } else {
             let peeked = self.peek();
-            Err(self.error(peeked, error_msg))
+            Err(Self::error(peeked, error_msg))
         }
     }
 
-    fn error(&self, token: &Token, msg: &str) -> ParseError {
+    pub fn error(token: &Token, msg: &str) -> ParseError {
         if token.ttype == EOF {
             ParseError::new(token.line, "at end".to_string(), msg.to_string())
         } else {
@@ -517,7 +520,6 @@ impl Parser {
             self.current += 1;
         }
         let rv = self.previous();
-        debug!("advance to: {:?}", *rv);
         rv
         // self.previous()
     }

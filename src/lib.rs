@@ -10,6 +10,7 @@ mod error;
 mod expr;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod stmt;
 mod token;
@@ -19,12 +20,14 @@ use {
     error::{LoxError, LoxErrorTrait},
     interpreter::Interpreter,
     parser::Parser,
+    resolver::Resolver,
     rustyline::{error::ReadlineError, Editor},
     scanner::Scanner,
     std::{
         fs,
         io::{self, prelude::*},
     },
+    stmt::Stmt,
 };
 
 pub fn run_file(file_name: &str) -> Result<(), io::Error> {
@@ -66,11 +69,12 @@ pub fn run_prompt() -> Result<(), io::Error> {
 
 fn run(interpreter: &mut Interpreter, source: String, repl: bool) -> Result<(), LoxError> {
     let scanner = Scanner::new(&source);
-    let stmts: Vec<stmt::Stmt> = Parser::new(scanner, repl)?
+    let mut stmts: Vec<Stmt> = Parser::new(scanner, repl)?
         .parse()?
         .into_iter()
         .filter_map(|stmt| stmt)
         .collect();
+    Resolver::new().resolve(&mut stmts)?;
     interpreter.interpret(&stmts)?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 use {
     environment::Environment,
     error::RuntimeError,
-    expr::{Expr, Expr::*},
+    expr::{Expr, ExprKind::*},
     std::{cell::RefCell, rc::Rc},
     stmt::{Stmt, Stmt::*},
     token::Token,
@@ -52,11 +52,6 @@ impl Interpreter {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn globals(&self) -> Rc<RefCell<Environment>> {
-        self.globals.clone()
-    }
-
     pub fn execute_block(
         &mut self,
         stmts: &[Stmt],
@@ -94,7 +89,6 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), val);
-                debug!("defining {}: env: {:?}", name.lexeme, self.environment);
             }
             Block(stmts) => {
                 let environment = Environment::from(self.environment.clone());
@@ -131,7 +125,7 @@ impl Interpreter {
                     .borrow_mut()
                     .define(name.lexeme.clone(), Rc::new(func));
             }
-            Return(expr) => {
+            Return { expr, .. } => {
                 return Ok(ExecuteReturn::Return(match expr {
                     Some(expr) => self.evaluate(expr)?,
                     None => Rc::new(LoxType::Nil),
@@ -143,7 +137,7 @@ impl Interpreter {
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use self::LoxType::*;
-        let res = match expr {
+        let res = match &expr.kind {
             StringLiteral(s) => Rc::new(LoxString(s.clone())),
             NumberLiteral(n) => Rc::new(Number(*n)),
             NilLiteral => Rc::new(Nil),
@@ -153,12 +147,8 @@ impl Interpreter {
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Logical { left, op, right } => self.evaluate_logical(left, op, right)?,
             Binary { left, op, right } => self.evaluate_binary(left, op, right)?,
-            Variable { name } => self.environment.borrow().get(name)?,
-            Assign { name, value } => {
-                let value = self.evaluate(value)?;
-                self.environment.borrow_mut().assign(name, value.clone())?;
-                value
-            }
+            Variable { name } => self.look_up_variable(name, expr)?,
+            Assign { name, value } => self.assign_variable(expr, name, value)?,
             Call {
                 arguments,
                 callee,
@@ -187,6 +177,31 @@ impl Interpreter {
             }
         };
         Ok(res)
+    }
+
+    fn look_up_variable(&mut self, name: &Token, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+        if let Some(distance) = expr.distance {
+            self.environment.borrow_mut().get_at(distance, name)
+        } else {
+            self.globals.borrow_mut().get(name)
+        }
+    }
+
+    fn assign_variable(
+        &mut self,
+        expr: &Expr,
+        name: &Token,
+        value: &Expr,
+    ) -> Result<Rc<LoxType>, RuntimeError> {
+        let value = self.evaluate(value)?;
+        if let Some(distance) = expr.distance {
+            self.environment
+                .borrow_mut()
+                .assign_at(distance, name, value.clone())?;
+        } else {
+            self.globals.borrow_mut().assign(name, value.clone())?;
+        }
+        Ok(value)
     }
 
     fn evaluate_unary(&mut self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {

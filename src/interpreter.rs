@@ -8,16 +8,16 @@ use {
     types::LoxType,
 };
 
-pub struct Interpreter<'a> {
-    globals: Rc<RefCell<Environment<'a>>>,
-    environment: Rc<RefCell<Environment<'a>>>,
+pub struct Interpreter {
+    globals: Rc<RefCell<Environment>>,
+    environment: Rc<RefCell<Environment>>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ExecuteReturn<'a> {
+pub enum ExecuteReturn {
     Void,
     Break,
-    Return(Rc<LoxType<'a>>),
+    Return(Rc<LoxType>),
 }
 
 macro_rules! execute_handle_return_or_break {
@@ -32,8 +32,8 @@ macro_rules! execute_handle_return_or_break {
     };
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new() -> Interpreter<'a> {
+impl Interpreter {
+    pub fn new() -> Interpreter {
         let globals = Rc::new(RefCell::new(Environment::new()));
         globals
             .borrow_mut()
@@ -45,7 +45,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn interpret(&mut self, stmts: &'a [Stmt]) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, stmts: &[Stmt]) -> Result<(), RuntimeError> {
         for stmt in stmts.iter() {
             self.execute(stmt)?;
         }
@@ -54,9 +54,9 @@ impl<'a> Interpreter<'a> {
 
     pub fn execute_block(
         &mut self,
-        stmts: &'a [Stmt],
-        environment: Environment<'a>,
-    ) -> Result<ExecuteReturn<'a>, RuntimeError> {
+        stmts: &[Stmt],
+        environment: Environment,
+    ) -> Result<ExecuteReturn, RuntimeError> {
         let old_environment = self.environment.clone();
         self.environment = Rc::new(RefCell::new(environment));
         let mut rv = ExecuteReturn::Void;
@@ -73,7 +73,7 @@ impl<'a> Interpreter<'a> {
         Ok(rv)
     }
 
-    fn execute(&mut self, stmt: &'a Stmt) -> Result<ExecuteReturn<'a>, RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
         match stmt {
             Print(expr) => {
                 println!("{}", self.evaluate(expr)?.stringify());
@@ -118,7 +118,7 @@ impl<'a> Interpreter<'a> {
             Break => return Ok(ExecuteReturn::Break),
             Function { name, .. } => {
                 let func = LoxType::LoxFunction {
-                    declaration: stmt,
+                    declaration: stmt.clone(),
                     closure: self.environment.clone(),
                 };
                 self.environment
@@ -135,7 +135,7 @@ impl<'a> Interpreter<'a> {
         Ok(ExecuteReturn::Void)
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use self::LoxType::*;
         let res = match &expr.kind {
             StringLiteral(s) => Rc::new(LoxString(s.clone())),
@@ -179,11 +179,7 @@ impl<'a> Interpreter<'a> {
         Ok(res)
     }
 
-    fn look_up_variable(
-        &mut self,
-        name: &Token,
-        expr: &Expr,
-    ) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    fn look_up_variable(&mut self, name: &Token, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         if let Some(distance) = expr.distance {
             self.environment.borrow_mut().get_at(distance, name)
         } else {
@@ -196,7 +192,7 @@ impl<'a> Interpreter<'a> {
         expr: &Expr,
         name: &Token,
         value: &Expr,
-    ) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    ) -> Result<Rc<LoxType>, RuntimeError> {
         let value = self.evaluate(value)?;
         if let Some(distance) = expr.distance {
             self.environment
@@ -208,11 +204,7 @@ impl<'a> Interpreter<'a> {
         Ok(value)
     }
 
-    fn evaluate_unary(
-        &mut self,
-        op: &Token,
-        right: &Expr,
-    ) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    fn evaluate_unary(&mut self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
         use {
             token::TokenType::{Bang, Minus},
             types::LoxType::{Boolean, Number},
@@ -234,7 +226,7 @@ impl<'a> Interpreter<'a> {
         left: &Expr,
         op: &Token,
         right: &Expr,
-    ) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    ) -> Result<Rc<LoxType>, RuntimeError> {
         use token::TokenType::Or;
         let left = self.evaluate(left)?;
 
@@ -255,7 +247,7 @@ impl<'a> Interpreter<'a> {
         left: &Expr,
         op: &Token,
         right: &Expr,
-    ) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    ) -> Result<Rc<LoxType>, RuntimeError> {
         use {
             token::TokenType::{
                 BangEqual, EqualEqual, Greater, GreaterEqual, Less, LessEqual, Minus, Plus, Slash,

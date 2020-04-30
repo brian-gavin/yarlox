@@ -1,0 +1,8 @@
+var N = 0;
+print(N);
+
+{
+    N = 1;
+}
+
+print(N);

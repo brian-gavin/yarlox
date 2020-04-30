@@ -55,8 +55,10 @@ impl Resolver {
                 if let Some(initializer) = initializer {
                     debug!("resolving initializer...");
                     self.resolve_expr(initializer)?;
+                    debug!("initializer finished");
                 }
                 self.define(&name);
+                debug!("var stmt finished")
             }
             Stmt::Function { name, .. } => {
                 self.declare(name)?;
@@ -200,21 +202,33 @@ impl Resolver {
     }
 
     fn define(&mut self, name: &Token) {
+        debug!(
+            "define({}) in scope[{}]",
+            name.lexeme,
+            self.scopes.len() - 1
+        );
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.lexeme.clone(), VariableState::Initialized);
         }
     }
 
     fn resolve_local(&mut self, name: &Token) -> Option<usize> {
-        debug!("scopes len: {}", self.scopes.len());
+        debug!(
+            "resolving local: {} scopes len: {}",
+            name.lexeme,
+            self.scopes.len()
+        );
         if self.scopes.len() == 0 {
             return None;
         }
         for (i, scope) in self.scopes.iter().enumerate().rev() {
             if scope.contains_key(&name.lexeme) {
-                return Some(i);
+                let distance = self.scopes.len() - 1 - i;
+                debug!("resolution found: {} distance: {}", name.lexeme, distance);
+                return Some(distance);
             }
         }
+        debug!("resolution assumes global");
         None
     }
 }

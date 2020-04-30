@@ -6,31 +6,34 @@ use {
 };
 
 #[derive(Debug)]
-pub struct Environment<'a> {
-    enclosing: Option<Rc<RefCell<Environment<'a>>>>,
-    scope: HashMap<String, Rc<LoxType<'a>>>,
+pub struct Environment {
+    enclosing: Option<Rc<RefCell<Environment>>>,
+    scope: HashMap<String, Rc<LoxType>>,
 }
 
-impl<'a> Environment<'a> {
-    pub fn new() -> Environment<'a> {
+impl Environment {
+    pub fn new() -> Environment {
         Environment {
             enclosing: None,
             scope: HashMap::new(),
         }
     }
 
-    pub fn from(enclosing: Rc<RefCell<Environment<'a>>>) -> Environment<'a> {
+    pub fn from(enclosing: Rc<RefCell<Environment>>) -> Environment {
         Environment {
             enclosing: Some(enclosing),
             scope: HashMap::new(),
         }
     }
 
-    pub fn define(&mut self, name: String, value: Rc<LoxType<'a>>) {
+    pub fn define(&mut self, name: String, value: Rc<LoxType>) {
+        debug!("define({}, {:#?})", name, value);
         self.scope.insert(name, value.clone());
+        debug!("{:#?}", self);
     }
 
-    pub fn get(&self, name: &Token) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    pub fn get(&self, name: &Token) -> Result<Rc<LoxType>, RuntimeError> {
+        debug!("get({})", name.lexeme);
         if let Some(val) = self.scope.get(&name.lexeme) {
             Ok(val.clone())
         } else if let Some(enclosing) = &self.enclosing {
@@ -40,15 +43,18 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn ancestor(&self, distance: usize) -> Option<Rc<RefCell<Environment<'a>>>> {
+    // TODO: does this need to be Rc or can be Weak?
+    fn ancestor(&self, distance: usize) -> Option<Rc<RefCell<Environment>>> {
         let mut environment = self.enclosing.clone();
         for _ in 1..distance {
             environment = environment.and_then(|env| env.borrow().enclosing.clone());
         }
+        debug!("ancestor({}) -> {:#?}", distance, environment);
         environment
     }
 
-    pub fn get_at(&self, distance: usize, name: &Token) -> Result<Rc<LoxType<'a>>, RuntimeError> {
+    pub fn get_at(&self, distance: usize, name: &Token) -> Result<Rc<LoxType>, RuntimeError> {
+        debug!("get_at({}, {})", distance, name.lexeme);
         if distance == 0 {
             self.get(name)
         } else {
@@ -59,7 +65,8 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn assign(&mut self, name: &Token, value: Rc<LoxType<'a>>) -> Result<(), RuntimeError> {
+    pub fn assign(&mut self, name: &Token, value: Rc<LoxType>) -> Result<(), RuntimeError> {
+        debug!("assign({}, {:#?})", name.lexeme, value);
         if self.scope.contains_key(&name.lexeme) {
             self.scope.insert(name.lexeme.clone(), value.clone());
             Ok(())
@@ -74,7 +81,7 @@ impl<'a> Environment<'a> {
         &mut self,
         distance: usize,
         name: &Token,
-        value: Rc<LoxType<'a>>,
+        value: Rc<LoxType>,
     ) -> Result<(), RuntimeError> {
         if distance == 0 {
             self.assign(name, value)

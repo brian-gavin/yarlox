@@ -1,4 +1,4 @@
-use {expr::Expr, expr::Expr::*};
+use {expr::Expr, expr::ExprKind::*};
 
 pub struct Printer;
 
@@ -20,24 +20,24 @@ impl Printer {
     }
 
     fn eval(&mut self, expr: &Expr) -> String {
-        match expr {
+        match &expr.kind {
             NilLiteral => "nil".to_string(),
             NumberLiteral(n) => n.to_string(),
             StringLiteral(s) => s.clone(),
-            Grouping(e) => self.parenthize("grouping", vec![e]),
-            Unary { op, right } => self.parenthize(&op.lexeme, vec![right]),
+            Grouping(e) => self.parenthize("grouping", vec![&e]),
+            Unary { op, right } => self.parenthize(&op.lexeme, vec![&right]),
             Logical { left, op, right } | Binary { left, op, right } => {
-                self.parenthize(&op.lexeme, vec![left, right])
+                self.parenthize(&op.lexeme, vec![&left, &right])
             }
             FalseLiteral => "false".to_string(),
             TrueLiteral => "true".to_string(),
             Variable { name } => format!("variable: {}", name.lexeme),
-            Assign { name, value } => format!("assign: {} to {}", self.eval(value), name.lexeme),
+            Assign { name, value } => format!("assign: {} to {}", self.eval(&value), name.lexeme),
             Call {
                 arguments, callee, ..
             } => format!(
                 "{}({})",
-                self.eval(callee),
+                self.eval(&callee),
                 arguments
                     .iter()
                     .map(|e| self.eval(e))
@@ -53,25 +53,25 @@ impl Printer {
 mod tests {
     use {
         ast_printer::Printer,
-        expr::Expr::*,
+        expr::{Expr, ExprKind::*},
         token::{Token, TokenType},
     };
     #[test]
     fn test_pretty_print() {
-        let ast = Binary {
-            left: Box::new(NumberLiteral(1.23)),
+        let ast = Expr::of(Binary {
+            left: Box::new(Expr::of(NumberLiteral(1.23))),
             op: Token::build()
                 .lexeme_str("+")
                 .ttype(TokenType::Plus)
                 .finalize(),
-            right: Box::new(Unary {
+            right: Box::new(Expr::of(Unary {
                 op: Token::build()
                     .lexeme_str("-")
                     .ttype(TokenType::Minus)
                     .finalize(),
-                right: Box::new(NumberLiteral(2.0)),
-            }),
-        };
+                right: Box::new(Expr::of(NumberLiteral(2.0))),
+            })),
+        });
         let expected = "(+ 1.23 (- 2))";
         let mut printer = Printer;
         assert_eq!(expected, printer.print(&ast));

@@ -1,6 +1,6 @@
 use {
     error::{LoxErrorTrait, ParseError},
-    expr::Expr,
+    expr::{Expr, ExprKind},
     scanner::Scanner,
     std::f64,
     stmt::Stmt,
@@ -25,11 +25,11 @@ macro_rules! left_associative_binary_expr {
         } {
             let op = $self.previous().clone();
             let right = Box::new($self.$higher_prec()?);
-            expr = Expr::$expr_type {
+            expr = Expr::of(ExprKind::$expr_type {
                 left: Box::new(expr),
                 op,
                 right,
-            };
+            });
         }
         Ok(expr)
     }};
@@ -202,7 +202,7 @@ impl Parser {
         let condition = if self.peek().ttype != Semicolon {
             Box::new(self.expression()?)
         } else {
-            Box::new(Expr::TrueLiteral)
+            Box::new(Expr::of(ExprKind::TrueLiteral))
         };
         self.consume(Semicolon, "Expected ';' after loop condition.")?;
         let increment = if self.peek().ttype != RightParen {
@@ -308,7 +308,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        use expr::Expr::{Assign, Variable};
+        use expr::ExprKind::{Assign, Variable};
 
         let expr = self.or()?;
         match self.peek().ttype {
@@ -317,8 +317,8 @@ impl Parser {
                 let equals = self.previous().clone();
                 let value = Box::new(self.assignment()?);
 
-                let assign = match expr {
-                    Variable { name } => Assign { name, value },
+                let assign = match expr.kind {
+                    Variable { name } => Expr::of(Assign { name, value }),
                     _ => {
                         Self::error(&equals, "Invalid assignment target").report();
                         expr
@@ -350,9 +350,9 @@ impl Parser {
             None
         };
         self.consume(Semicolon, "Expected ';' after 'return'.")?;
-        Ok(Stmt::Return{
+        Ok(Stmt::Return {
             keyword: keyword.clone(),
-            expr
+            expr,
         })
     }
 
@@ -394,7 +394,7 @@ impl Parser {
                 self.advance();
                 let op = self.previous().clone();
                 let right = Box::new(self.unary()?);
-                Ok(Expr::Unary { op, right })
+                Ok(Expr::of(ExprKind::Unary { op, right }))
             }
             _ => self.call(),
         }
@@ -430,26 +430,26 @@ impl Parser {
 
         let paren = self.consume(RightParen, "Expected ')' after arguments.")?;
 
-        Ok(Expr::Call {
+        Ok(Expr::of(ExprKind::Call {
             arguments,
             callee: Box::new(expr),
             paren: paren.clone(),
-        })
+        }))
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
         Ok(match self.peek().ttype {
             False => {
                 self.advance();
-                Expr::FalseLiteral
+                Expr::of(ExprKind::FalseLiteral)
             }
             True => {
                 self.advance();
-                Expr::TrueLiteral
+                Expr::of(ExprKind::TrueLiteral)
             }
             Nil => {
                 self.advance();
-                Expr::NilLiteral
+                Expr::of(ExprKind::NilLiteral)
             }
             Number => {
                 self.advance();
@@ -457,23 +457,23 @@ impl Parser {
                     Ok(n) => n,
                     Err(e) => return Err(Self::error(self.previous(), e.to_string().as_str())),
                 };
-                Expr::NumberLiteral(number)
+                Expr::of(ExprKind::NumberLiteral(number))
             }
             StringLit => {
                 self.advance();
-                Expr::StringLiteral(self.previous().literal.clone())
+                Expr::of(ExprKind::StringLiteral(self.previous().literal.clone()))
             }
             LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
                 let _ = self.consume(RightParen, "Expect ')' after expression.")?;
-                Expr::Grouping(Box::new(expr))
+                Expr::of(ExprKind::Grouping(Box::new(expr)))
             }
             Ident => {
                 self.advance();
-                Expr::Variable {
+                Expr::of(ExprKind::Variable {
                     name: self.previous().clone(),
-                }
+                })
             }
             _ => {
                 let peeked = self.peek();

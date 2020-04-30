@@ -26,6 +26,6 @@ pub enum Stmt {
     },
     Return {
         keyword: Token,
-        expr: Option<Box<Expr>>
+        expr: Option<Box<Expr>>,
     },
 }

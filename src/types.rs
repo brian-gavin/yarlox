@@ -53,14 +53,19 @@ impl<'a> LoxType<'a> {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e.description()))
             }
             LoxType::LoxFunction {
-                declaration: &Stmt::Function { params, body, .. },
+                declaration:
+                    &Stmt::Function {
+                        ref params,
+                        ref body,
+                        ..
+                    },
                 closure,
             } => {
                 let mut env = Environment::from(closure.clone());
                 for (i, param) in params.iter().enumerate() {
                     env.define(param.lexeme.clone(), arguments[i].clone());
                 }
-                intr.execute_block(&body, env)
+                intr.execute_block(body, env)
                     .map_err(|e| e.message())
                     .map(|ret| match ret {
                         ExecuteReturn::Return(val) => val,

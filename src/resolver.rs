@@ -1,6 +1,10 @@
 use {
-    error::ParseError, expr::Expr, interpreter::Interpreter, parser::Parser,
-    std::collections::HashMap, stmt::Stmt, token::Token,
+    error::ParseError,
+    expr::{Expr, ExprKind::*},
+    parser::Parser,
+    std::collections::HashMap,
+    stmt::Stmt,
+    token::Token,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,31 +19,29 @@ enum FunctionType {
     Function,
 }
 
-pub struct Resolver<'a, 'b> {
-    interpreter: &'b mut Interpreter<'a>,
+pub struct Resolver {
     scopes: Vec<HashMap<String, VariableState>>,
     current_function: FunctionType,
 }
 
 type ResolveReturn = Result<(), ParseError>;
 
-impl<'a, 'b> Resolver<'a, 'b> {
-    pub fn new(interpreter: &'b mut Interpreter<'a>) -> Resolver<'a, 'b> {
+impl Resolver {
+    pub fn new() -> Resolver {
         Resolver {
-            interpreter,
             scopes: vec![],
             current_function: FunctionType::None,
         }
     }
 
-    pub fn resolve(&mut self, stmts: &[Stmt]) -> ResolveReturn {
+    pub fn resolve(&mut self, stmts: &mut [Stmt]) -> ResolveReturn {
         for stmt in stmts {
             self.resolve_stmt(stmt)?;
         }
         Ok(())
     }
 
-    fn resolve_stmt(&mut self, stmt: &Stmt) -> ResolveReturn {
+    fn resolve_stmt(&mut self, stmt: &mut Stmt) -> ResolveReturn {
         match stmt {
             Stmt::Block(stmts) => {
                 debug!("resolving block stmt...");
@@ -61,7 +63,7 @@ impl<'a, 'b> Resolver<'a, 'b> {
                 self.define(name);
                 self.resolve_function(stmt, FunctionType::Function)?;
             }
-            Stmt::Return{keyword, expr} => {
+            Stmt::Return { keyword, expr } => {
                 if self.current_function == FunctionType::None {
                     return Err(Parser::error(keyword, "Cannot return from top-level code."));
                 }
@@ -69,7 +71,7 @@ impl<'a, 'b> Resolver<'a, 'b> {
                     self.resolve_expr(expr)?;
                 }
             }
-            | Stmt::Print(expr) | Stmt::Expression(expr) => {
+            Stmt::Print(expr) | Stmt::Expression(expr) => {
                 self.resolve_expr(expr)?;
             }
             Stmt::If {
@@ -92,9 +94,9 @@ impl<'a, 'b> Resolver<'a, 'b> {
         Ok(())
     }
 
-        fn resolve_expr(&mut self, expr: &Expr) -> ResolveReturn {
-        match expr {
-            Expr::Variable { name } => {
+    fn resolve_expr(&mut self, expr: &mut Expr) -> ResolveReturn {
+        match expr.kind {
+            Variable { ref name } => {
                 let variable_in_scope_and_uninit = self
                     .scopes
                     .last()
@@ -107,40 +109,58 @@ impl<'a, 'b> Resolver<'a, 'b> {
                         "Cannot read local variable in its own initializer.",
                     ));
                 } else {
-                    self.resolve_local(expr, name);
+                    expr.distance = self.resolve_local(name);
                 }
             }
-            Expr::Assign { value, name } => {
+            Assign {
+                ref mut value,
+                ref name,
+            } => {
                 self.resolve_expr(value)?;
-                self.resolve_local(expr, name);
+                expr.distance = self.resolve_local(name);
             }
-            Expr::Logical { left, right, .. } | Expr::Binary { left, right, .. } => {
+            Logical {
+                ref mut left,
+                ref mut right,
+                ..
+            }
+            | Binary {
+                ref mut left,
+                ref mut right,
+                ..
+            } => {
                 self.resolve_expr(left)?;
                 self.resolve_expr(right)?;
             }
-            Expr::Call {
-                callee, arguments, ..
+            Call {
+                ref mut callee,
+                ref mut arguments,
+                ..
             } => {
                 self.resolve_expr(callee)?;
                 for arg in arguments {
                     self.resolve_expr(arg)?;
                 }
             }
-            Expr::Grouping(expr) | Expr::Unary { right: expr, .. } => {
+            Grouping(ref mut expr)
+            | Unary {
+                right: ref mut expr,
+                ..
+            } => {
                 self.resolve_expr(expr)?;
             }
-            Expr::TrueLiteral
-            | Expr::FalseLiteral
-            | Expr::StringLiteral(_)
-            | Expr::NumberLiteral(_)
-            | Expr::NilLiteral => (),
+            TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),
         }
         Ok(())
     }
 
-    fn resolve_function(&mut self, stmt: &Stmt, ftype: FunctionType) -> ResolveReturn {
+    fn resolve_function(&mut self, stmt: &mut Stmt, ftype: FunctionType) -> ResolveReturn {
         match stmt {
-            Stmt::Function { params, body, .. } => {
+            Stmt::Function {
+                params,
+                ref mut body,
+                ..
+            } => {
                 let enclosing_fn = self.current_function;
                 self.current_function = ftype;
                 self.begin_scope();
@@ -165,38 +185,36 @@ impl<'a, 'b> Resolver<'a, 'b> {
         self.scopes.pop();
     }
 
-    fn declare(&mut self, name: &Token) -> ResolveReturn  {
+    fn declare(&mut self, name: &Token) -> ResolveReturn {
         debug!("in declare: scope len {:?}", self.scopes.len());
         if let Some(scope) = self.scopes.last_mut() {
             if scope.contains_key(&name.lexeme) {
-                return Err(Parser::error(name, "Variable with this name already declared in this scope."));
+                return Err(Parser::error(
+                    name,
+                    "Variable with this name already declared in this scope.",
+                ));
             }
             scope.insert(name.lexeme.clone(), VariableState::Uninitialized);
         }
         Ok(())
     }
 
-    fn define(&mut self, name: &Token){
+    fn define(&mut self, name: &Token) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.lexeme.clone(), VariableState::Initialized);
         }
     }
 
-    fn resolve_local(&mut self, expr: &Expr, name: &Token) {
-        debug!("resolving local... ({}):{:?}", &name.lexeme, expr as *const Expr);
+    fn resolve_local(&mut self, name: &Token) -> Option<usize> {
         debug!("scopes len: {}", self.scopes.len());
         if self.scopes.len() == 0 {
-            return;
+            return None;
         }
-        for (i, scope) in self.scopes
-            .iter()
-            .enumerate()
-            .rev()
-        {
+        for (i, scope) in self.scopes.iter().enumerate().rev() {
             if scope.contains_key(&name.lexeme) {
-                self.interpreter.resolve(expr, self.scopes.len() - i);
-                return;
+                return Some(i);
             }
         }
+        None
     }
 }

@@ -1,7 +1,22 @@
 use {ast_printer::Printer, std::fmt, token::Token};
 
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub struct Expr {
+    pub distance: Option<usize>,
+    pub kind: ExprKind,
+}
+
+impl Expr {
+    pub const fn of(kind: ExprKind) -> Expr {
+        Expr {
+            distance: None,
+            kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
     Binary {
         left: Box<Expr>,
         op: Token,

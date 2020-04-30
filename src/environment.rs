@@ -40,8 +40,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn ancestor(&self, distance: usize) -> Option<Rc<RefCell<Environment<'a>>>>
-    {
+    fn ancestor(&self, distance: usize) -> Option<Rc<RefCell<Environment<'a>>>> {
         let mut environment = self.enclosing.clone();
         for _ in 1..distance {
             environment = environment.and_then(|env| env.borrow().enclosing.clone());
@@ -71,13 +70,18 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn assign_at(&mut self, distance: usize, name: &Token, value: Rc<LoxType<'a>>) -> Result<(), RuntimeError> {
+    pub fn assign_at(
+        &mut self,
+        distance: usize,
+        name: &Token,
+        value: Rc<LoxType<'a>>,
+    ) -> Result<(), RuntimeError> {
         if distance == 0 {
             self.assign(name, value)
         } else {
             self.ancestor(distance).map_or_else(
                 || Err(Environment::undefined_variable(name)),
-                |ancestor| ancestor.borrow_mut().assign(name, value)
+                |ancestor| ancestor.borrow_mut().assign(name, value),
             )
         }
     }

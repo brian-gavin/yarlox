@@ -2,7 +2,7 @@ use {
     environment::Environment,
     error::LoxErrorTrait,
     interpreter::{ExecuteReturn, Interpreter},
-    std::{cell::RefCell, error::Error, rc::Rc, time},
+    std::{cell::RefCell, rc::Rc, time},
     stmt::Stmt,
 };
 
@@ -49,7 +49,7 @@ impl LoxType {
     ) -> Result<Rc<LoxType>, String> {
         match self {
             LoxType::BuiltinFnClock => {
-                builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e.description()))
+                builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
             }
             LoxType::LoxFunction {
                 declaration,

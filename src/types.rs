@@ -87,7 +87,7 @@ impl LoxType {
     }
 }
 
-fn builtin_fn_clock<'a>() -> Result<Rc<LoxType>, time::SystemTimeError> {
+fn builtin_fn_clock() -> Result<Rc<LoxType>, time::SystemTimeError> {
     let current_time = time::SystemTime::now()
         .duration_since(time::UNIX_EPOCH)?
         .as_secs_f64();

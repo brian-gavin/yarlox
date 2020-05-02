@@ -1,9 +1,10 @@
 use {
     environment::Environment,
-    error::LoxErrorTrait,
+    error::{LoxErrorTrait, RuntimeError},
     interpreter::{ExecuteReturn, Interpreter},
-    std::{cell::RefCell, rc::Rc, time},
+    std::{cell::RefCell, collections::HashMap, rc::Rc, time},
     stmt::Stmt,
+    token::Token,
 };
 
 #[derive(Clone, Debug)]
@@ -13,16 +14,26 @@ pub enum LoxType {
     Boolean(bool),
     Nil,
     BuiltinFnClock,
-    LoxFunction {
-        declaration: Stmt,
-        closure: Rc<RefCell<Environment>>,
-    },
-    LoxClass {
-        name: String,
-    },
-    LoxInstance {
-        class: Rc<LoxType>,
-    },
+    LoxFunction(LoxFunction),
+    LoxClass(LoxClass),
+    LoxInstance(LoxInstance),
+}
+
+#[derive(Clone, Debug)]
+pub struct LoxFunction {
+    declaration: Stmt,
+    closure: Rc<RefCell<Environment>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct LoxClass {
+    name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct LoxInstance {
+    class: Rc<LoxType>,
+    fields: HashMap<String, Rc<LoxType>>,
 }
 
 impl LoxType {
@@ -41,46 +52,49 @@ impl LoxType {
             LoxType::Boolean(b) => b.to_string(),
             LoxType::Nil => "nil".to_string(),
             LoxType::BuiltinFnClock => "<native fn>".to_string(),
-            LoxType::LoxFunction { declaration, .. } => match declaration {
-                Stmt::Function { name, .. } => format!("<fn {}>", name.lexeme),
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
-            LoxType::LoxClass { name } => name.clone(),
-            LoxType::LoxInstance { class } => format!("{} instance", class.stringify()),
+            LoxType::LoxFunction(LoxFunction { declaration, .. }) => {
+                if let Stmt::Function { name, .. } = declaration {
+                    format!("<fn {}>", name.lexeme)
+                } else {
+                    panic!("LoxType::Function::Stmt is not type Function.");
+                }
+            }
+            LoxType::LoxClass(LoxClass { name }) => name.clone(),
+            LoxType::LoxInstance(LoxInstance { class, .. }) => {
+                format!("{} instance", class.stringify())
+            }
         }
     }
 
     pub fn call(
-        typ: Rc<LoxType>,
+        self: Rc<LoxType>,
         intr: &mut Interpreter,
         arguments: &[Rc<LoxType>],
     ) -> Result<Rc<LoxType>, String> {
-        match &*typ {
+        match &*self {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
             }
-            LoxType::LoxFunction {
-                declaration,
+            LoxType::LoxFunction(LoxFunction {
+                declaration:
+                    Stmt::Function {
+                        params, ref body, ..
+                    },
                 closure,
-            } => match declaration {
-                Stmt::Function {
-                    params, ref body, ..
-                } => {
-                    let mut env = Environment::from(closure.clone());
-                    for (i, param) in params.iter().enumerate() {
-                        env.define(param.lexeme.clone(), arguments[i].clone());
-                    }
-                    intr.execute_block(body, env)
-                        .map_err(|e| e.message())
-                        .map(|ret| match ret {
-                            ExecuteReturn::Return(val) => val,
-                            _ => Rc::new(LoxType::Nil),
-                        })
+            }) => {
+                let mut env = Environment::from(closure.clone());
+                for (i, param) in params.iter().enumerate() {
+                    env.define(param.lexeme.clone(), arguments[i].clone());
                 }
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
-            LoxType::LoxClass { .. } => {
-                let instance = Rc::new(LoxType::LoxInstance { class: typ.clone() });
+                intr.execute_block(body, env)
+                    .map_err(|e| e.message())
+                    .map(|ret| match ret {
+                        ExecuteReturn::Return(val) => val,
+                        _ => Rc::new(LoxType::Nil),
+                    })
+            }
+            LoxType::LoxClass(_) => {
+                let instance = Rc::new(LoxType::LoxInstance(LoxInstance::new(self.clone())));
                 Ok(instance)
             }
             _ => Err(String::from("Can only call functions and classes.")),
@@ -90,12 +104,47 @@ impl LoxType {
     pub fn arity(&self) -> usize {
         match self {
             LoxType::BuiltinFnClock => 0,
-            LoxType::LoxFunction { declaration, .. } => match declaration {
-                Stmt::Function { params, .. } => params.len(),
-                _ => panic!("LoxType::Function::Stmt is not type Function."),
-            },
+            LoxType::LoxFunction(LoxFunction {
+                declaration: Stmt::Function { params, .. },
+                ..
+            }) => params.len(),
             LoxType::LoxClass { .. } => 0,
             _ => panic!("Checking arity of type that is not a function or class."),
+        }
+    }
+}
+
+impl LoxFunction {
+    pub fn new(declaration: Stmt, closure: Rc<RefCell<Environment>>) -> Self {
+        Self {
+            declaration,
+            closure,
+        }
+    }
+}
+
+impl LoxClass {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl LoxInstance {
+    pub fn new(class: Rc<LoxType>) -> Self {
+        LoxInstance {
+            class,
+            fields: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, prop: &Token) -> Result<Rc<LoxType>, RuntimeError> {
+        if let Some(value) = self.fields.get(prop.lexeme.as_str()) {
+            Ok(value.clone())
+        } else {
+            Err(RuntimeError {
+                token: prop.clone(),
+                msg: format!("Undefined property {}.", prop.lexeme),
+            })
         }
     }
 }

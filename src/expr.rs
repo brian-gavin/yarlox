@@ -49,6 +49,10 @@ pub enum ExprKind {
         paren: Token,
         arguments: Vec<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
 }
 
 impl fmt::Display for Expr {

@@ -5,7 +5,7 @@ use {
     std::{cell::RefCell, rc::Rc},
     stmt::{Stmt, Stmt::*},
     token::Token,
-    types::LoxType,
+    types::{LoxClass, LoxFunction, LoxType},
 };
 
 pub struct Interpreter {
@@ -117,10 +117,8 @@ impl Interpreter {
             }
             Break => return Ok(ExecuteReturn::Break),
             Function { name, .. } => {
-                let func = LoxType::LoxFunction {
-                    declaration: stmt.clone(),
-                    closure: self.environment.clone(),
-                };
+                let func =
+                    LoxType::LoxFunction(LoxFunction::new(stmt.clone(), self.environment.clone()));
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), Rc::new(func));
@@ -135,9 +133,7 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), Rc::new(LoxType::Nil));
-                let class = LoxType::LoxClass {
-                    name: name.lexeme.clone(),
-                };
+                let class = LoxType::LoxClass(LoxClass::new(name.lexeme.clone()));
                 self.environment.borrow_mut().assign(name, Rc::new(class))?;
             }
         }
@@ -179,9 +175,17 @@ impl Interpreter {
                         .as_str(),
                     ));
                 }
-                match LoxType::call(callee, self, &evaluated_arguments) {
+                match callee.call(self, &evaluated_arguments) {
                     Ok(v) => v,
                     Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
+                }
+            }
+            Get { object, name } => {
+                let object = self.evaluate(object)?;
+                if let LoxType::LoxInstance(instance) = &*object {
+                    instance.get(name)?
+                } else {
+                    return Err(Self::error(name.clone(), "Only instances have properties."));
                 }
             }
         };

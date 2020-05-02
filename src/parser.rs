@@ -442,6 +442,13 @@ impl Parser {
                     self.advance();
                     expr = self.finish_call(expr)?;
                 }
+                Dot => {
+                    let name = self.consume(Ident, "Expected property name after '.'.")?;
+                    expr = Expr::of(ExprKind::Get {
+                        object: Box::new(expr),
+                        name: name.clone(),
+                    });
+                }
                 _ => break,
             }
         }

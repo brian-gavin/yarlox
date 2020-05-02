@@ -131,6 +131,15 @@ impl Interpreter {
                     None => Rc::new(LoxType::Nil),
                 }))
             }
+            Class { name, .. } => {
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), Rc::new(LoxType::Nil));
+                let class = LoxType::LoxClass {
+                    name: name.lexeme.clone(),
+                };
+                self.environment.borrow_mut().assign(name, Rc::new(class))?;
+            }
         }
         Ok(ExecuteReturn::Void)
     }
@@ -170,7 +179,7 @@ impl Interpreter {
                         .as_str(),
                     ));
                 }
-                match callee.call(self, &evaluated_arguments) {
+                match LoxType::call(callee, self, &evaluated_arguments) {
                     Ok(v) => v,
                     Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
                 }

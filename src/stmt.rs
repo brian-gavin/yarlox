@@ -28,4 +28,8 @@ pub enum Stmt {
         keyword: Token,
         expr: Option<Box<Expr>>,
     },
+    Class {
+        name: Token,
+        methods: Vec<Stmt>,
+    },
 }

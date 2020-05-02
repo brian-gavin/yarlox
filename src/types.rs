@@ -17,6 +17,12 @@ pub enum LoxType {
         declaration: Stmt,
         closure: Rc<RefCell<Environment>>,
     },
+    LoxClass {
+        name: String,
+    },
+    LoxInstance {
+        class: Rc<LoxType>,
+    },
 }
 
 impl LoxType {
@@ -39,15 +45,17 @@ impl LoxType {
                 Stmt::Function { name, .. } => format!("<fn {}>", name.lexeme),
                 _ => panic!("LoxType::Function::Stmt is not type Function."),
             },
+            LoxType::LoxClass { name } => name.clone(),
+            LoxType::LoxInstance { class } => format!("{} instance", class.stringify()),
         }
     }
 
     pub fn call(
-        &self,
+        typ: Rc<LoxType>,
         intr: &mut Interpreter,
         arguments: &[Rc<LoxType>],
     ) -> Result<Rc<LoxType>, String> {
-        match self {
+        match &*typ {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
             }
@@ -71,6 +79,10 @@ impl LoxType {
                 }
                 _ => panic!("LoxType::Function::Stmt is not type Function."),
             },
+            LoxType::LoxClass { .. } => {
+                let instance = Rc::new(LoxType::LoxInstance { class: typ.clone() });
+                Ok(instance)
+            }
             _ => Err(String::from("Can only call functions and classes.")),
         }
     }
@@ -82,6 +94,7 @@ impl LoxType {
                 Stmt::Function { params, .. } => params.len(),
                 _ => panic!("LoxType::Function::Stmt is not type Function."),
             },
+            LoxType::LoxClass { .. } => 0,
             _ => panic!("Checking arity of type that is not a function or class."),
         }
     }

@@ -92,6 +92,10 @@ impl Resolver {
                 self.resolve_stmt(body)?;
             }
             Stmt::Break => (),
+            Stmt::Class { name, .. } => {
+                self.declare(name)?;
+                self.define(name);
+            }
         }
         Ok(())
     }

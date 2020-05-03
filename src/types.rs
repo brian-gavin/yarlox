@@ -1,5 +1,5 @@
 use {
-    environment::Environment,
+    environment::{Environment, EnvironmentEntry},
     error::{LoxErrorTrait, RuntimeError},
     interpreter::{ExecuteReturn, Interpreter},
     std::{cell::RefCell, collections::HashMap, rc::Rc, time},
@@ -32,8 +32,8 @@ pub struct LoxClass {
 
 #[derive(Clone, Debug)]
 pub struct LoxInstance {
-    class: Rc<LoxType>,
-    fields: HashMap<String, Rc<LoxType>>,
+    class: EnvironmentEntry,
+    fields: HashMap<String, Rc<RefCell<LoxType>>>,
 }
 
 impl LoxType {
@@ -61,17 +61,17 @@ impl LoxType {
             }
             LoxType::LoxClass(LoxClass { name }) => name.clone(),
             LoxType::LoxInstance(LoxInstance { class, .. }) => {
-                format!("{} instance", class.stringify())
+                format!("{} instance", class.borrow().stringify())
             }
         }
     }
 
     pub fn call(
-        self: Rc<LoxType>,
+        callee: EnvironmentEntry,
         intr: &mut Interpreter,
-        arguments: &[Rc<LoxType>],
-    ) -> Result<Rc<LoxType>, String> {
-        match &*self {
+        arguments: &[EnvironmentEntry],
+    ) -> Result<EnvironmentEntry, String> {
+        match &*callee.borrow() {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
             }
@@ -90,11 +90,13 @@ impl LoxType {
                     .map_err(|e| e.message())
                     .map(|ret| match ret {
                         ExecuteReturn::Return(val) => val,
-                        _ => Rc::new(LoxType::Nil),
+                        _ => Rc::new(RefCell::new(LoxType::Nil)),
                     })
             }
             LoxType::LoxClass(_) => {
-                let instance = Rc::new(LoxType::LoxInstance(LoxInstance::new(self.clone())));
+                let instance = Rc::new(RefCell::new(LoxType::LoxInstance(LoxInstance::new(
+                    callee.clone(),
+                ))));
                 Ok(instance)
             }
             _ => Err(String::from("Can only call functions and classes.")),
@@ -109,7 +111,10 @@ impl LoxType {
                 ..
             }) => params.len(),
             LoxType::LoxClass { .. } => 0,
-            _ => panic!("Checking arity of type that is not a function or class."),
+            _ => panic!(
+                "Checking arity of type that is not a function or class: {:#?}.",
+                self
+            ),
         }
     }
 }
@@ -130,14 +135,14 @@ impl LoxClass {
 }
 
 impl LoxInstance {
-    pub fn new(class: Rc<LoxType>) -> Self {
+    pub fn new(class: EnvironmentEntry) -> Self {
         LoxInstance {
             class,
             fields: HashMap::new(),
         }
     }
 
-    pub fn get(&self, prop: &Token) -> Result<Rc<LoxType>, RuntimeError> {
+    pub fn get(&self, prop: &Token) -> Result<Rc<RefCell<LoxType>>, RuntimeError> {
         if let Some(value) = self.fields.get(prop.lexeme.as_str()) {
             Ok(value.clone())
         } else {
@@ -149,11 +154,11 @@ impl LoxInstance {
     }
 }
 
-fn builtin_fn_clock() -> Result<Rc<LoxType>, time::SystemTimeError> {
+fn builtin_fn_clock() -> Result<EnvironmentEntry, time::SystemTimeError> {
     let current_time = time::SystemTime::now()
         .duration_since(time::UNIX_EPOCH)?
         .as_secs_f64();
-    Ok(Rc::new(LoxType::Number(current_time)))
+    Ok(Rc::new(RefCell::new(LoxType::Number(current_time))))
 }
 
 impl PartialEq for LoxType {

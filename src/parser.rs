@@ -443,6 +443,7 @@ impl Parser {
                     expr = self.finish_call(expr)?;
                 }
                 Dot => {
+                    self.advance();
                     let name = self.consume(Ident, "Expected property name after '.'.")?;
                     expr = Expr::of(ExprKind::Get {
                         object: Box::new(expr),

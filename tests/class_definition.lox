@@ -1,0 +1,9 @@
+class Hi {}
+print Hi;
+
+class HiWithMethod {
+    getMsg() {
+        return "hi";
+    }
+}
+print HiWithMethod;

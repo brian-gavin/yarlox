@@ -1,0 +1,11 @@
+fun adder() {
+    var a = 10;
+    fun closure(n) {
+        return a + n;
+    }
+    return closure;
+}
+var f = adder();
+print f(1);
+var a = 2;
+print f(a);

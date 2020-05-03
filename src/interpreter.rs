@@ -1,5 +1,5 @@
 use {
-    environment::Environment,
+    environment::{Environment, EnvironmentEntry},
     error::RuntimeError,
     expr::{Expr, ExprKind::*},
     std::{cell::RefCell, rc::Rc},
@@ -17,7 +17,7 @@ pub struct Interpreter {
 pub enum ExecuteReturn {
     Void,
     Break,
-    Return(Rc<LoxType>),
+    Return(EnvironmentEntry),
 }
 
 macro_rules! execute_handle_return_or_break {
@@ -35,9 +35,10 @@ macro_rules! execute_handle_return_or_break {
 impl Interpreter {
     pub fn new() -> Interpreter {
         let globals = Rc::new(RefCell::new(Environment::new()));
-        globals
-            .borrow_mut()
-            .define(String::from("clock"), Rc::new(LoxType::BuiltinFnClock));
+        globals.borrow_mut().define(
+            String::from("clock"),
+            Rc::new(RefCell::new(LoxType::BuiltinFnClock)),
+        );
         let environment = globals.clone();
         Interpreter {
             globals,
@@ -76,7 +77,7 @@ impl Interpreter {
     fn execute(&mut self, stmt: &Stmt) -> Result<ExecuteReturn, RuntimeError> {
         match stmt {
             Print(expr) => {
-                println!("{}", self.evaluate(expr)?.stringify());
+                println!("{}", self.evaluate(expr)?.borrow().stringify());
             }
             Expression(expr) => {
                 self.evaluate(expr)?;
@@ -84,7 +85,7 @@ impl Interpreter {
             Var { name, initializer } => {
                 let val = match initializer {
                     Some(expr) => self.evaluate(expr)?,
-                    None => Rc::new(LoxType::Nil),
+                    None => Rc::new(RefCell::new(LoxType::Nil)),
                 };
                 self.environment
                     .borrow_mut()
@@ -99,14 +100,14 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             } => {
-                if self.evaluate(condition)?.is_truthy() {
+                if self.evaluate(condition)?.borrow().is_truthy() {
                     execute_handle_return_or_break!(self, then_branch);
                 } else if let Some(else_branch) = else_branch {
                     execute_handle_return_or_break!(self, else_branch);
                 }
             }
             While { condition, body } => {
-                while self.evaluate(condition)?.is_truthy() {
+                while self.evaluate(condition)?.borrow().is_truthy() {
                     let rv = self.execute(body)?;
                     match rv {
                         ExecuteReturn::Break => break,
@@ -121,33 +122,35 @@ impl Interpreter {
                     LoxType::LoxFunction(LoxFunction::new(stmt.clone(), self.environment.clone()));
                 self.environment
                     .borrow_mut()
-                    .define(name.lexeme.clone(), Rc::new(func));
+                    .define(name.lexeme.clone(), Rc::new(RefCell::new(func)));
             }
             Return { expr, .. } => {
                 return Ok(ExecuteReturn::Return(match expr {
                     Some(expr) => self.evaluate(expr)?,
-                    None => Rc::new(LoxType::Nil),
+                    None => Rc::new(RefCell::new(LoxType::Nil)),
                 }))
             }
             Class { name, .. } => {
                 self.environment
                     .borrow_mut()
-                    .define(name.lexeme.clone(), Rc::new(LoxType::Nil));
+                    .define(name.lexeme.clone(), Rc::new(RefCell::new(LoxType::Nil)));
                 let class = LoxType::LoxClass(LoxClass::new(name.lexeme.clone()));
-                self.environment.borrow_mut().assign(name, Rc::new(class))?;
+                self.environment
+                    .borrow_mut()
+                    .assign(name, Rc::new(RefCell::new(class)))?;
             }
         }
         Ok(ExecuteReturn::Void)
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<EnvironmentEntry, RuntimeError> {
         use self::LoxType::*;
         let res = match &expr.kind {
-            StringLiteral(s) => Rc::new(LoxString(s.clone())),
-            NumberLiteral(n) => Rc::new(Number(*n)),
-            NilLiteral => Rc::new(Nil),
-            TrueLiteral => Rc::new(Boolean(true)),
-            FalseLiteral => Rc::new(Boolean(false)),
+            StringLiteral(s) => Rc::new(RefCell::new(LoxString(s.clone()))),
+            NumberLiteral(n) => Rc::new(RefCell::new(Number(*n))),
+            NilLiteral => Rc::new(RefCell::new(Nil)),
+            TrueLiteral => Rc::new(RefCell::new(Boolean(true))),
+            FalseLiteral => Rc::new(RefCell::new(Boolean(false))),
             Grouping(grouped) => self.evaluate(grouped)?,
             Unary { op, right } => self.evaluate_unary(op, right)?,
             Logical { left, op, right } => self.evaluate_logical(left, op, right)?,
@@ -164,35 +167,40 @@ impl Interpreter {
                 for arg in arguments.iter() {
                     evaluated_arguments.push(self.evaluate(arg)?);
                 }
-                if evaluated_arguments.len() != callee.arity() {
+                if evaluated_arguments.len() != callee.borrow().arity() {
                     return Err(Self::error(
                         paren.clone(),
                         format!(
                             "Expected {} arguments but got {}.",
-                            callee.arity(),
+                            callee.borrow().arity(),
                             evaluated_arguments.len()
                         )
                         .as_str(),
                     ));
                 }
-                match callee.call(self, &evaluated_arguments) {
+                match LoxType::call(callee, self, &evaluated_arguments) {
                     Ok(v) => v,
                     Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
                 }
             }
             Get { object, name } => {
                 let object = self.evaluate(object)?;
-                if let LoxType::LoxInstance(instance) = &*object {
+                let rv = if let LoxType::LoxInstance(instance) = &*object.borrow() {
                     instance.get(name)?
                 } else {
                     return Err(Self::error(name.clone(), "Only instances have properties."));
-                }
+                };
+                rv
             }
         };
         Ok(res)
     }
 
-    fn look_up_variable(&mut self, name: &Token, expr: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn look_up_variable(
+        &mut self,
+        name: &Token,
+        expr: &Expr,
+    ) -> Result<EnvironmentEntry, RuntimeError> {
         if let Some(distance) = expr.distance {
             self.environment.borrow_mut().get_at(distance, name)
         } else {
@@ -205,7 +213,7 @@ impl Interpreter {
         expr: &Expr,
         name: &Token,
         value: &Expr,
-    ) -> Result<Rc<LoxType>, RuntimeError> {
+    ) -> Result<EnvironmentEntry, RuntimeError> {
         let value = self.evaluate(value)?;
         if let Some(distance) = expr.distance {
             self.environment
@@ -217,21 +225,24 @@ impl Interpreter {
         Ok(value)
     }
 
-    fn evaluate_unary(&mut self, op: &Token, right: &Expr) -> Result<Rc<LoxType>, RuntimeError> {
+    fn evaluate_unary(
+        &mut self,
+        op: &Token,
+        right: &Expr,
+    ) -> Result<EnvironmentEntry, RuntimeError> {
         use {
             token::TokenType::{Bang, Minus},
             types::LoxType::{Boolean, Number},
         };
 
         let right = self.evaluate(right)?;
-        let right = right.as_ref();
-        let res = match (op.ttype, right) {
+        let res = match (op.ttype, &*right.borrow()) {
             (Minus, Number(n)) => Number(-n),
             (Minus, _) => return Err(self.number_error(op.clone())),
             (Bang, right @ _) => Boolean(!right.is_truthy()),
             _ => panic!("Unary operator that is neither Bang nor Minus"),
         };
-        Ok(Rc::new(res))
+        Ok(Rc::new(RefCell::new(res)))
     }
 
     fn evaluate_logical(
@@ -239,16 +250,16 @@ impl Interpreter {
         left: &Expr,
         op: &Token,
         right: &Expr,
-    ) -> Result<Rc<LoxType>, RuntimeError> {
+    ) -> Result<EnvironmentEntry, RuntimeError> {
         use token::TokenType::Or;
         let left = self.evaluate(left)?;
 
         if op.ttype == Or {
-            if left.is_truthy() {
+            if left.borrow().is_truthy() {
                 return Ok(left);
             }
         } else {
-            if !left.is_truthy() {
+            if !left.borrow().is_truthy() {
                 return Ok(left);
             }
         }
@@ -260,7 +271,7 @@ impl Interpreter {
         left: &Expr,
         op: &Token,
         right: &Expr,
-    ) -> Result<Rc<LoxType>, RuntimeError> {
+    ) -> Result<EnvironmentEntry, RuntimeError> {
         use {
             token::TokenType::{
                 BangEqual, EqualEqual, Greater, GreaterEqual, Less, LessEqual, Minus, Plus, Slash,
@@ -274,7 +285,7 @@ impl Interpreter {
         let right = self.evaluate(right)?;
         let right = right.as_ref();
 
-        let res = match (left, op.ttype, right) {
+        let res = match (&*left.borrow(), op.ttype, &*right.borrow()) {
             (Number(n1), Star, Number(n2)) => Number(n1 * n2),
             (Number(n1), Slash, Number(n2)) => {
                 if n2 != &0.0 {
@@ -309,7 +320,7 @@ impl Interpreter {
             }
             (_, _, _) => return Err(Self::error(op.clone(), "Unexpected binary expression")),
         };
-        Ok(Rc::new(res))
+        Ok(Rc::new(RefCell::new(res)))
     }
 
     fn number_error(&self, token: Token) -> RuntimeError {

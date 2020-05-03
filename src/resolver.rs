@@ -151,6 +151,14 @@ impl Resolver {
             Get { ref mut object, .. } => {
                 self.resolve_expr(object)?;
             }
+            Set {
+                ref mut object,
+                ref mut value,
+                ..
+            } => {
+                self.resolve_expr(object)?;
+                self.resolve_expr(value)?;
+            }
             Grouping(ref mut expr)
             | Unary {
                 right: ref mut expr,

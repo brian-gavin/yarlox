@@ -192,6 +192,21 @@ impl Interpreter {
                 };
                 rv
             }
+            Set {
+                object,
+                name,
+                value,
+            } => {
+                let object = self.evaluate(object)?;
+                let rv = if let LoxType::LoxInstance(instance) = &mut *object.borrow_mut() {
+                    let value = self.evaluate(value)?;
+                    instance.set(name, value.clone());
+                    value
+                } else {
+                    return Err(Self::error(name.clone(), "Only instances have properties."));
+                };
+                rv
+            }
         };
         Ok(res)
     }

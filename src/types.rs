@@ -152,6 +152,10 @@ impl LoxInstance {
             })
         }
     }
+
+    pub fn set(&mut self, prop: &Token, value: EnvironmentEntry) {
+        self.fields.insert(prop.lexeme.clone(), value);
+    }
 }
 
 fn builtin_fn_clock() -> Result<EnvironmentEntry, time::SystemTimeError> {

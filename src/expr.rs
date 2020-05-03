@@ -53,6 +53,11 @@ pub enum ExprKind {
         object: Box<Expr>,
         name: Token,
     },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
 }
 
 impl fmt::Display for Expr {

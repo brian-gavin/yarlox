@@ -342,7 +342,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        use expr::ExprKind::{Assign, Variable};
+        use expr::ExprKind::{Assign, Get, Set, Variable};
 
         let expr = self.or()?;
         match self.peek().ttype {
@@ -353,6 +353,11 @@ impl Parser {
 
                 let assign = match expr.kind {
                     Variable { name } => Expr::of(Assign { name, value }),
+                    Get { object, name } => Expr::of(Set {
+                        object,
+                        name,
+                        value,
+                    }),
                     _ => {
                         Self::error(&equals, "Invalid assignment target").report();
                         expr

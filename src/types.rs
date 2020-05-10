@@ -72,25 +72,15 @@ impl LoxType {
             LoxType::BuiltinFnClock => {
                 builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
             }
-            LoxType::LoxFunction(func) => {
-                if let Stmt::Function { params, body, .. } = &func.declaration {
-                    let mut env = Environment::from(func.closure.clone());
-                    for (i, param) in params.iter().enumerate() {
-                        env.define(param.lexeme.clone(), arguments[i].clone());
-                    }
-                    intr.execute_block(body, env)
-                        .map_err(|e| e.message())
-                        .map(|ret| match ret {
-                            ExecuteReturn::Return(val) => val,
-                            _ => LoxType::Nil,
-                        })
-                } else {
-                    panic!("LoxType::Function::Stmt is not type Function.")
+            LoxType::LoxFunction(func) => func.call(intr, arguments),
+            LoxType::LoxClass(class) => {
+                let instance = LoxInstance::new(class.clone());
+                let instance = LoxType::LoxInstance(Rc::new(RefCell::new(instance)));
+                if let Some(initializer) = class.get_method("init") {
+                    initializer.bind(instance.clone()).call(intr, arguments)?;
                 }
+                Ok(instance)
             }
-            LoxType::LoxClass(class) => Ok(LoxType::LoxInstance(Rc::new(RefCell::new(
-                LoxInstance::new(class.clone()),
-            )))),
             _ => Err(String::from("Can only call functions and classes.")),
         }
     }
@@ -98,14 +88,14 @@ impl LoxType {
     pub fn arity(&self) -> usize {
         match self {
             LoxType::BuiltinFnClock => 0,
-            LoxType::LoxFunction(func) => {
-                if let Stmt::Function { params, .. } = &func.declaration {
-                    params.len()
+            LoxType::LoxFunction(func) => func.arity(),
+            LoxType::LoxClass(class) => {
+                if let Some(initializer) = class.get_method("init") {
+                    initializer.arity()
                 } else {
-                    panic!("LoxType::Function::Stmt is not type Function.")
+                    0
                 }
             }
-            LoxType::LoxClass { .. } => 0,
             _ => panic!(
                 "Checking arity of type that is not a function or class: {:#?}.",
                 self
@@ -129,6 +119,31 @@ impl LoxFunction {
         Self {
             declaration,
             closure: Rc::new(RefCell::new(closure)),
+        }
+    }
+
+    pub fn arity(&self) -> usize {
+        if let Stmt::Function { params, .. } = &self.declaration {
+            params.len()
+        } else {
+            panic!("LoxType::Function::Stmt is not type Function.")
+        }
+    }
+
+    pub fn call(&self, intr: &mut Interpreter, arguments: &[LoxType]) -> Result<LoxType, String> {
+        if let Stmt::Function { params, body, .. } = &self.declaration {
+            let mut env = Environment::from(self.closure.clone());
+            for (i, param) in params.iter().enumerate() {
+                env.define(param.lexeme.clone(), arguments[i].clone());
+            }
+            intr.execute_block(body, env)
+                .map_err(|e| e.message())
+                .map(|ret| match ret {
+                    ExecuteReturn::Return(val) => val,
+                    _ => LoxType::Nil,
+                })
+        } else {
+            panic!("LoxType::Function::Stmt is not type Function.")
         }
     }
 }

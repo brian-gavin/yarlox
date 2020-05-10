@@ -15,14 +15,19 @@ enum VariableState {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FunctionType {
-    None,
     Function,
     Method,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClassType {
+    Class,
+}
+
 pub struct Resolver {
     scopes: Vec<HashMap<String, VariableState>>,
-    current_function: FunctionType,
+    current_function: Option<FunctionType>,
+    current_class: Option<ClassType>,
 }
 
 type ResolveReturn = Result<(), ParseError>;
@@ -31,7 +36,8 @@ impl Resolver {
     pub fn new() -> Resolver {
         Resolver {
             scopes: vec![],
-            current_function: FunctionType::None,
+            current_function: None,
+            current_class: None,
         }
     }
 
@@ -67,7 +73,7 @@ impl Resolver {
                 self.resolve_function(stmt, FunctionType::Function)?;
             }
             Stmt::Return { keyword, expr } => {
-                if self.current_function == FunctionType::None {
+                if self.current_function.is_none() {
                     return Err(Parser::error(keyword, "Cannot return from top-level code."));
                 }
                 if let Some(expr) = expr {
@@ -94,6 +100,8 @@ impl Resolver {
             }
             Stmt::Break => (),
             Stmt::Class { name, methods } => {
+                let enclosing_class = self.current_class;
+                self.current_class = Some(ClassType::Class);
                 self.declare(name)?;
                 self.define(name);
                 self.begin_scope();
@@ -106,6 +114,7 @@ impl Resolver {
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();
+                self.current_class = enclosing_class;
             }
         }
         Ok(())
@@ -178,6 +187,9 @@ impl Resolver {
                 self.resolve_expr(expr)?;
             }
             This(ref keyword) => {
+                if self.current_class.is_none() {
+                    return Err(Parser::error(keyword, "Cannot use 'this' outside a class."));
+                }
                 expr.distance = self.resolve_local(keyword);
             }
             TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),
@@ -193,7 +205,7 @@ impl Resolver {
                 ..
             } => {
                 let enclosing_fn = self.current_function;
-                self.current_function = ftype;
+                self.current_function = Some(ftype);
                 self.begin_scope();
                 for param in params {
                     self.declare(param)?;

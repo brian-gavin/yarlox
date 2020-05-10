@@ -17,6 +17,7 @@ enum VariableState {
 enum FunctionType {
     None,
     Function,
+    Method,
 }
 
 pub struct Resolver {
@@ -92,9 +93,19 @@ impl Resolver {
                 self.resolve_stmt(body)?;
             }
             Stmt::Break => (),
-            Stmt::Class { name, .. } => {
+            Stmt::Class { name, methods } => {
                 self.declare(name)?;
                 self.define(name);
+                self.begin_scope();
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert(String::from("this"), VariableState::Initialized);
+                for method in methods {
+                    let declaration = FunctionType::Method;
+                    self.resolve_function(method, declaration)?;
+                }
+                self.end_scope();
             }
         }
         Ok(())
@@ -166,6 +177,9 @@ impl Resolver {
             } => {
                 self.resolve_expr(expr)?;
             }
+            This(ref keyword) => {
+                expr.distance = self.resolve_local(keyword);
+            }
             TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),
         }
         Ok(())
@@ -227,6 +241,7 @@ impl Resolver {
         }
     }
 
+    #[must_use]
     fn resolve_local(&mut self, name: &Token) -> Option<usize> {
         debug!(
             "resolving local: {} scopes len: {}",

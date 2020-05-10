@@ -5,12 +5,10 @@ use {
     types::LoxType,
 };
 
-pub type EnvironmentEntry = Rc<RefCell<LoxType>>;
-
 #[derive(Debug)]
 pub struct Environment {
     enclosing: Option<Rc<RefCell<Environment>>>,
-    scope: HashMap<String, EnvironmentEntry>,
+    scope: HashMap<String, LoxType>,
 }
 
 impl Environment {
@@ -28,13 +26,13 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: String, value: Rc<RefCell<LoxType>>) {
+    pub fn define(&mut self, name: String, value: LoxType) {
         debug!("define({}, {:#?})", name, value);
         self.scope.insert(name, value.clone());
         debug!("{:#?}", self);
     }
 
-    pub fn get(&self, name: &Token) -> Result<EnvironmentEntry, RuntimeError> {
+    pub fn get(&self, name: &Token) -> Result<LoxType, RuntimeError> {
         debug!("get({})", name.lexeme);
         if let Some(val) = self.scope.get(&name.lexeme) {
             Ok(val.clone())
@@ -55,7 +53,7 @@ impl Environment {
         environment
     }
 
-    pub fn get_at(&self, distance: usize, name: &Token) -> Result<EnvironmentEntry, RuntimeError> {
+    pub fn get_at(&self, distance: usize, name: &Token) -> Result<LoxType, RuntimeError> {
         debug!("get_at({}, {})", distance, name.lexeme);
         if distance == 0 {
             self.get(name)
@@ -67,7 +65,7 @@ impl Environment {
         }
     }
 
-    pub fn assign(&mut self, name: &Token, value: EnvironmentEntry) -> Result<(), RuntimeError> {
+    pub fn assign(&mut self, name: &Token, value: LoxType) -> Result<(), RuntimeError> {
         debug!("assign({}, {:#?})", name.lexeme, value);
         if self.scope.contains_key(&name.lexeme) {
             self.scope.insert(name.lexeme.clone(), value.clone());
@@ -83,7 +81,7 @@ impl Environment {
         &mut self,
         distance: usize,
         name: &Token,
-        value: EnvironmentEntry,
+        value: LoxType,
     ) -> Result<(), RuntimeError> {
         if distance == 0 {
             self.assign(name, value)

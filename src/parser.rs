@@ -522,6 +522,10 @@ impl Parser {
                     name: self.previous().clone(),
                 })
             }
+            This => {
+                self.advance();
+                Expr::of(ExprKind::This(self.previous().clone()))
+            }
             _ => {
                 let peeked = self.peek();
                 return Err(Self::error(peeked, "Expected an expression."));

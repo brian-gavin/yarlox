@@ -23,6 +23,7 @@ pub enum LoxType {
 pub struct LoxFunction {
     declaration: Stmt,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -105,10 +106,11 @@ impl LoxType {
 }
 
 impl LoxFunction {
-    pub fn new(declaration: Stmt, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn new(declaration: Stmt, closure: Rc<RefCell<Environment>>, is_initializer: bool) -> Self {
         Self {
             declaration,
             closure,
+            is_initializer,
         }
     }
 
@@ -119,6 +121,7 @@ impl LoxFunction {
         Self {
             declaration,
             closure: Rc::new(RefCell::new(closure)),
+            is_initializer: self.is_initializer,
         }
     }
 
@@ -138,9 +141,15 @@ impl LoxFunction {
             }
             intr.execute_block(body, env)
                 .map_err(|e| e.message())
-                .map(|ret| match ret {
-                    ExecuteReturn::Return(val) => val,
-                    _ => LoxType::Nil,
+                .map(|ret| {
+                    if self.is_initializer {
+                        let tmp_this_tok = Token::build().lexeme(String::from("this")).finalize();
+                        self.closure.borrow().get_at(0, &tmp_this_tok).unwrap()
+                    } else if let ExecuteReturn::Return(val) = ret {
+                        val
+                    } else {
+                        LoxType::Nil
+                    }
                 })
         } else {
             panic!("LoxType::Function::Stmt is not type Function.")

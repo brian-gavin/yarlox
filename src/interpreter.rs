@@ -117,7 +117,7 @@ impl Interpreter {
             }
             Break => return Ok(ExecuteReturn::Break),
             Function { name, .. } => {
-                let func = LoxFunction::new(stmt.clone(), self.environment.clone());
+                let func = LoxFunction::new(stmt.clone(), self.environment.clone(), false);
                 let func = LoxType::LoxFunction(Rc::new(func));
                 self.environment
                     .borrow_mut()
@@ -137,8 +137,11 @@ impl Interpreter {
                     .iter()
                     .map(|method| {
                         if let Stmt::Function { name, .. } = method {
-                            let function =
-                                LoxFunction::new(method.clone(), self.environment.clone());
+                            let function = LoxFunction::new(
+                                method.clone(),
+                                self.environment.clone(),
+                                name.lexeme == "init",
+                            );
                             (name.lexeme.clone(), function)
                         } else {
                             panic!("Non-function in list of class methods");

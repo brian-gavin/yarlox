@@ -17,6 +17,7 @@ enum VariableState {
 enum FunctionType {
     Function,
     Method,
+    Initializer,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,6 +78,12 @@ impl Resolver {
                     return Err(Parser::error(keyword, "Cannot return from top-level code."));
                 }
                 if let Some(expr) = expr {
+                    if self.current_function == Some(FunctionType::Initializer) {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot return a value from an initializer.",
+                        ));
+                    }
                     self.resolve_expr(expr)?;
                 }
             }
@@ -110,7 +117,11 @@ impl Resolver {
                     .unwrap()
                     .insert(String::from("this"), VariableState::Initialized);
                 for method in methods {
-                    let declaration = FunctionType::Method;
+                    let declaration = if name.lexeme == "init" {
+                        FunctionType::Initializer
+                    } else {
+                        FunctionType::Method
+                    };
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();

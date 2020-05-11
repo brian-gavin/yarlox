@@ -98,7 +98,7 @@ impl Parser {
         let res = match self.peek().ttype {
             Fun => {
                 self.advance();
-                self.function(FunctionKind::Function)
+                self.function(FunctionKind::Function, None)
             }
             Var => {
                 self.advance();
@@ -119,10 +119,13 @@ impl Parser {
         }
     }
 
-    fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParseError> {
-        let name = self
-            .consume(Ident, format!("Expect a {} name.", kind).as_str())?
-            .clone();
+    fn function(&mut self, kind: FunctionKind, name: Option<Token>) -> Result<Stmt, ParseError> {
+        let name = if let Some(name) = name {
+            name
+        } else {
+            self.consume(Ident, format!("Expect a {} name.", kind).as_str())?
+                .clone()
+        };
         self.consume(
             LeftParen,
             format!("Expect '(' after {} name.", kind).as_str(),
@@ -175,12 +178,32 @@ impl Parser {
         self.consume(LeftBrace, "Expect '{' after class name.")?;
         let mut methods: Vec<Stmt> = vec![];
         while self.peek().ttype != RightBrace && !self.is_at_end() {
-            methods.push(self.function(FunctionKind::Method)?);
+            methods.push(self.class_member()?);
         }
 
         self.consume(RightBrace, "Expect '}' after class body.")?;
 
         Ok(Stmt::Class { name, methods })
+    }
+
+    fn class_member(&mut self) -> Result<Stmt, ParseError> {
+        let name = self
+            .consume(Ident, "Expected method or getter name.")?
+            .clone();
+        if self.peek().ttype == TokenType::LeftParen {
+            self.function(FunctionKind::Method, Some(name))
+        } else {
+            self.getter_method(name)
+        }
+    }
+
+    fn getter_method(&mut self, name: Token) -> Result<Stmt, ParseError> {
+        self.consume(TokenType::LeftBrace, "Expected '{{' before getter method.")?;
+        let body = self.block()?;
+        match body {
+            Stmt::Block(body) => Ok(Stmt::GetterMethod { name, body }),
+            _ => panic!("block() did not return a Stmt::Block."),
+        }
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {

@@ -2,7 +2,7 @@ use {
     environment::Environment,
     error::RuntimeError,
     expr::{Expr, ExprKind::*},
-    std::{cell::RefCell, collections::HashMap, rc::Rc},
+    std::{cell::{RefCell, RefMut}, collections::HashMap, rc::Rc},
     stmt::{Stmt, Stmt::*},
     token::Token,
     types::{LoxClass, LoxFunction, LoxInstance, LoxType},
@@ -32,12 +32,14 @@ macro_rules! execute_handle_return_or_break {
     };
 }
 
+fn define_globals(mut globals: RefMut<'_, Environment>) {
+    globals.define(String::from("clock"), LoxType::BuiltinFnClock.into());
+    globals.define(String::from("PI"), LoxType::Number(std::f64::consts::PI))
+}
 impl Interpreter {
     pub fn new() -> Interpreter {
         let globals = Rc::new(RefCell::new(Environment::new()));
-        globals
-            .borrow_mut()
-            .define(String::from("clock"), LoxType::BuiltinFnClock.into());
+        define_globals(globals.borrow_mut());
         let environment = globals.clone();
         Interpreter {
             globals,
@@ -135,22 +137,22 @@ impl Interpreter {
                     .define(name.lexeme.clone(), LoxType::Nil.into());
                 let methods: HashMap<String, LoxFunction> = methods
                     .iter()
-                    .map(|method| {
-                        if let Stmt::Function { name, .. } = method {
+                    .map(|method| match method {
+                        Stmt::Function { name, .. } | Stmt::GetterMethod { name, .. } => {
                             let function = LoxFunction::new(
                                 method.clone(),
                                 self.environment.clone(),
                                 name.lexeme == "init",
                             );
                             (name.lexeme.clone(), function)
-                        } else {
-                            panic!("Non-function in list of class methods");
-                        }
+                        } 
+                        _ => panic!("Non-function in list of class methods"),
                     })
                     .collect();
                 let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), methods)));
                 self.environment.borrow_mut().assign(name, class.into())?;
             }
+            GetterMethod{..} => panic!("GetterMethod should not be executed directly, it should be done in Class execution."),
         }
         Ok(ExecuteReturn::Void)
     }
@@ -190,14 +192,11 @@ impl Interpreter {
                         .as_str(),
                     ));
                 }
-                match callee.call(self, &evaluated_arguments) {
-                    Ok(v) => v,
-                    Err(s) => return Err(Self::error(paren.clone(), s.as_str())),
-                }
+                callee.call(paren, self, &evaluated_arguments)?
             }
             Get { object, name } => {
                 let object = self.evaluate(object)?;
-                LoxInstance::get(&object, name)?
+                LoxInstance::get(&object, name, self)?
             }
             Set {
                 object,

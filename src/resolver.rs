@@ -17,6 +17,7 @@ enum VariableState {
 enum FunctionType {
     Function,
     Method,
+    Getter,
     Initializer,
 }
 
@@ -29,6 +30,7 @@ pub struct Resolver {
     scopes: Vec<HashMap<String, VariableState>>,
     current_function: Option<FunctionType>,
     current_class: Option<ClassType>,
+    resolved_return: bool,
 }
 
 type ResolveReturn = Result<(), ParseError>;
@@ -39,6 +41,7 @@ impl Resolver {
             scopes: vec![],
             current_function: None,
             current_class: None,
+            resolved_return: false,
         }
     }
 
@@ -86,6 +89,7 @@ impl Resolver {
                     }
                     self.resolve_expr(expr)?;
                 }
+                self.resolved_return = true;
             }
             Stmt::Print(expr) | Stmt::Expression(expr) => {
                 self.resolve_expr(expr)?;
@@ -127,6 +131,7 @@ impl Resolver {
                 self.end_scope();
                 self.current_class = enclosing_class;
             }
+            Stmt::GetterMethod{..} => panic!("GetterMethod should not be resolved directly, it should be done via resolve_function."),
         }
         Ok(())
     }
@@ -225,6 +230,29 @@ impl Resolver {
                 self.resolve(body)?;
                 self.end_scope();
                 self.current_function = enclosing_fn;
+            }
+            Stmt::GetterMethod {
+                ref mut body,
+                ref name,
+            } => {
+                let enclosing_fn = self.current_function;
+                let resolved_return = self.resolved_return;
+
+                self.resolved_return = false;
+                self.current_function = Some(FunctionType::Getter);
+                self.begin_scope();
+
+                self.resolve(body)?;
+                if !self.resolved_return {
+                    return Err(Parser::error(
+                        name,
+                        "Getter method must have a return statement.",
+                    ));
+                }
+
+                self.end_scope();
+                self.current_function = enclosing_fn;
+                self.resolved_return = resolved_return;
             }
             _ => panic!("Resolving statement that isn't a function."),
         }

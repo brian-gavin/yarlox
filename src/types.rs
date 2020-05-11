@@ -1,6 +1,6 @@
 use {
     environment::Environment,
-    error::{LoxErrorTrait, RuntimeError},
+    error::RuntimeError,
     interpreter::{ExecuteReturn, Interpreter},
     std::{cell::RefCell, collections::HashMap, rc::Rc, time},
     stmt::Stmt,
@@ -68,11 +68,19 @@ impl LoxType {
         }
     }
 
-    pub fn call(&self, intr: &mut Interpreter, arguments: &[LoxType]) -> Result<LoxType, String> {
+    pub fn call(
+        &self,
+        paren: &Token,
+        intr: &mut Interpreter,
+        arguments: &[LoxType],
+    ) -> Result<LoxType, RuntimeError> {
         match self {
-            LoxType::BuiltinFnClock => {
-                builtin_fn_clock().map_err(|e| format!("BuiltinClock failed: {}", e))
-            }
+            LoxType::BuiltinFnClock => builtin_fn_clock().map_err(|e| {
+                Interpreter::error(
+                    paren.clone(),
+                    format!("BuiltinClock failed: {}", e).as_str(),
+                )
+            }),
             LoxType::LoxFunction(func) => func.call(intr, arguments),
             LoxType::LoxClass(class) => {
                 let instance = LoxInstance::new(class.clone());
@@ -82,7 +90,10 @@ impl LoxType {
                 }
                 Ok(instance)
             }
-            _ => Err(String::from("Can only call functions and classes.")),
+            _ => Err(Interpreter::error(
+                paren.clone(),
+                "Can only call functions and classes.",
+            )),
         }
     }
 
@@ -133,27 +144,39 @@ impl LoxFunction {
         }
     }
 
-    pub fn call(&self, intr: &mut Interpreter, arguments: &[LoxType]) -> Result<LoxType, String> {
+    pub fn call(
+        &self,
+        intr: &mut Interpreter,
+        arguments: &[LoxType],
+    ) -> Result<LoxType, RuntimeError> {
         if let Stmt::Function { params, body, .. } = &self.declaration {
             let mut env = Environment::from(self.closure.clone());
             for (i, param) in params.iter().enumerate() {
                 env.define(param.lexeme.clone(), arguments[i].clone());
             }
-            intr.execute_block(body, env)
-                .map_err(|e| e.message())
-                .map(|ret| {
-                    if self.is_initializer {
-                        let tmp_this_tok = Token::build().lexeme(String::from("this")).finalize();
-                        self.closure.borrow().get_at(0, &tmp_this_tok).unwrap()
-                    } else if let ExecuteReturn::Return(val) = ret {
-                        val
-                    } else {
-                        LoxType::Nil
-                    }
-                })
+            intr.execute_block(body, env).map(|ret| {
+                if self.is_initializer {
+                    let tmp_this_tok = Token::build().lexeme(String::from("this")).finalize();
+                    self.closure.borrow().get_at(0, &tmp_this_tok).unwrap()
+                } else if let ExecuteReturn::Return(val) = ret {
+                    val
+                } else {
+                    LoxType::Nil
+                }
+            })
+        } else if let Stmt::GetterMethod { body, .. } = &self.declaration {
+            let env = Environment::from(self.closure.clone());
+            intr.execute_block(body, env).map(|ret| match ret {
+                ExecuteReturn::Return(val) => val,
+                _ => LoxType::Nil,
+            })
         } else {
             panic!("LoxType::Function::Stmt is not type Function.")
         }
+    }
+
+    pub fn is_getter_method(&self) -> bool {
+        matches!(self.declaration, Stmt::GetterMethod{..})
     }
 }
 
@@ -175,15 +198,24 @@ impl LoxInstance {
         }
     }
 
-    pub fn get(instance: &LoxType, prop: &Token) -> Result<LoxType, RuntimeError> {
+    pub fn get(
+        instance: &LoxType,
+        prop: &Token,
+        intr: &mut Interpreter,
+    ) -> Result<LoxType, RuntimeError> {
         if let LoxType::LoxInstance(instance) = instance {
             if let Some(value) = instance.borrow().fields.get(prop.lexeme.as_str()) {
                 return Ok(value.clone());
             }
             if let Some(method) = instance.borrow().class.get_method(prop.lexeme.as_str()) {
-                let method = method.bind(LoxType::LoxInstance(instance.clone()));
-                let method = LoxType::LoxFunction(Rc::new(method));
-                return Ok(method);
+                return Ok(if method.is_getter_method() {
+                    method
+                        .bind(LoxType::LoxInstance(instance.clone()))
+                        .call(intr, &[])?
+                } else {
+                    let method = method.bind(LoxType::LoxInstance(instance.clone()));
+                    LoxType::LoxFunction(Rc::new(method))
+                });
             }
             Err(RuntimeError {
                 token: prop.clone(),

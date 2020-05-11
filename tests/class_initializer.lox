@@ -1,0 +1,43 @@
+class Node {
+    init(val) {
+        this.val = val;
+        this.next = nil;
+    }
+}
+
+class List {
+    init(head) {
+        this.head = head;
+    }
+
+    append(val) {
+        if (this.head == nil) {
+            this.head = Node(val);
+            return;
+        }
+        var tmp = this.head;
+        while(tmp.next != nil) {
+            tmp = tmp.next;
+        }
+        tmp.next = Node(val);
+    }
+
+    apply(fn) {
+        for (var node = this.head; node != nil; node = node.next) {
+            fn(node);
+        }
+    }
+}
+
+fun printNode(node) {
+    print node.val;
+}
+
+var list = List(nil);
+list.append(1);
+list.append(2);
+list.append(3);
+list.append(4);
+
+list.apply(printNode);
+

@@ -15,13 +15,20 @@ enum VariableState {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FunctionType {
-    None,
     Function,
+    Method,
+    Initializer,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClassType {
+    Class,
 }
 
 pub struct Resolver {
     scopes: Vec<HashMap<String, VariableState>>,
-    current_function: FunctionType,
+    current_function: Option<FunctionType>,
+    current_class: Option<ClassType>,
 }
 
 type ResolveReturn = Result<(), ParseError>;
@@ -30,7 +37,8 @@ impl Resolver {
     pub fn new() -> Resolver {
         Resolver {
             scopes: vec![],
-            current_function: FunctionType::None,
+            current_function: None,
+            current_class: None,
         }
     }
 
@@ -66,10 +74,16 @@ impl Resolver {
                 self.resolve_function(stmt, FunctionType::Function)?;
             }
             Stmt::Return { keyword, expr } => {
-                if self.current_function == FunctionType::None {
+                if self.current_function.is_none() {
                     return Err(Parser::error(keyword, "Cannot return from top-level code."));
                 }
                 if let Some(expr) = expr {
+                    if self.current_function == Some(FunctionType::Initializer) {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot return a value from an initializer.",
+                        ));
+                    }
                     self.resolve_expr(expr)?;
                 }
             }
@@ -92,6 +106,27 @@ impl Resolver {
                 self.resolve_stmt(body)?;
             }
             Stmt::Break => (),
+            Stmt::Class { name, methods } => {
+                let enclosing_class = self.current_class;
+                self.current_class = Some(ClassType::Class);
+                self.declare(name)?;
+                self.define(name);
+                self.begin_scope();
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert(String::from("this"), VariableState::Initialized);
+                for method in methods {
+                    let declaration = if name.lexeme == "init" {
+                        FunctionType::Initializer
+                    } else {
+                        FunctionType::Method
+                    };
+                    self.resolve_function(method, declaration)?;
+                }
+                self.end_scope();
+                self.current_class = enclosing_class;
+            }
         }
         Ok(())
     }
@@ -144,12 +179,29 @@ impl Resolver {
                     self.resolve_expr(arg)?;
                 }
             }
+            Get { ref mut object, .. } => {
+                self.resolve_expr(object)?;
+            }
+            Set {
+                ref mut object,
+                ref mut value,
+                ..
+            } => {
+                self.resolve_expr(object)?;
+                self.resolve_expr(value)?;
+            }
             Grouping(ref mut expr)
             | Unary {
                 right: ref mut expr,
                 ..
             } => {
                 self.resolve_expr(expr)?;
+            }
+            This(ref keyword) => {
+                if self.current_class.is_none() {
+                    return Err(Parser::error(keyword, "Cannot use 'this' outside a class."));
+                }
+                expr.distance = self.resolve_local(keyword);
             }
             TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),
         }
@@ -164,7 +216,7 @@ impl Resolver {
                 ..
             } => {
                 let enclosing_fn = self.current_function;
-                self.current_function = ftype;
+                self.current_function = Some(ftype);
                 self.begin_scope();
                 for param in params {
                     self.declare(param)?;
@@ -212,6 +264,7 @@ impl Resolver {
         }
     }
 
+    #[must_use]
     fn resolve_local(&mut self, name: &Token) -> Option<usize> {
         debug!(
             "resolving local: {} scopes len: {}",

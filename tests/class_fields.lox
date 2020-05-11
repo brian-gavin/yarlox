@@ -1,0 +1,5 @@
+class A{}
+
+var myA = A();
+myA.msg = "Hi";
+print myA.msg;

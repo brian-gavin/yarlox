@@ -45,6 +45,9 @@ impl Printer {
                     .as_slice()
                     .join(",")
             ),
+            Get { object, name } => format!("{}.{}", self.eval(&object), name.lexeme),
+            Set { object, value, .. } => format!("{} = {}", self.eval(&object), self.eval(&value)),
+            This(_) => String::from("this"),
         }
     }
 }

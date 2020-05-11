@@ -3,6 +3,7 @@ use {
     expr::{Expr, ExprKind},
     scanner::Scanner,
     std::f64,
+    std::fmt,
     stmt::Stmt,
     token::{Token, TokenType, TokenType::*},
 };
@@ -33,6 +34,22 @@ macro_rules! left_associative_binary_expr {
         }
         Ok(expr)
     }};
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FunctionKind {
+    Function,
+    Method,
+}
+
+impl fmt::Display for FunctionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use self::FunctionKind::*;
+        match self {
+            Function => f.write_str("function"),
+            Method => f.write_str("method"),
+        }
+    }
 }
 
 pub struct Parser {
@@ -81,11 +98,15 @@ impl Parser {
         let res = match self.peek().ttype {
             Fun => {
                 self.advance();
-                self.function("function")
+                self.function(FunctionKind::Function)
             }
             Var => {
                 self.advance();
                 self.var_declaration()
+            }
+            Class => {
+                self.advance();
+                self.class_declaration()
             }
             _ => self.statement(),
         };
@@ -98,7 +119,7 @@ impl Parser {
         }
     }
 
-    fn function(&mut self, kind: &str) -> Result<Stmt, ParseError> {
+    fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParseError> {
         let name = self
             .consume(Ident, format!("Expect a {} name.", kind).as_str())?
             .clone();
@@ -147,6 +168,19 @@ impl Parser {
 
         self.consume(Semicolon, "Expect ';' after variable declaration")?;
         Ok(Stmt::Var { name, initializer })
+    }
+
+    fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume(Ident, "Expect a class name.")?.clone();
+        self.consume(LeftBrace, "Expect '{' after class name.")?;
+        let mut methods: Vec<Stmt> = vec![];
+        while self.peek().ttype != RightBrace && !self.is_at_end() {
+            methods.push(self.function(FunctionKind::Method)?);
+        }
+
+        self.consume(RightBrace, "Expect '}' after class body.")?;
+
+        Ok(Stmt::Class { name, methods })
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
@@ -308,7 +342,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        use expr::ExprKind::{Assign, Variable};
+        use expr::ExprKind::{Assign, Get, Set, Variable};
 
         let expr = self.or()?;
         match self.peek().ttype {
@@ -319,6 +353,11 @@ impl Parser {
 
                 let assign = match expr.kind {
                     Variable { name } => Expr::of(Assign { name, value }),
+                    Get { object, name } => Expr::of(Set {
+                        object,
+                        name,
+                        value,
+                    }),
                     _ => {
                         Self::error(&equals, "Invalid assignment target").report();
                         expr
@@ -408,6 +447,14 @@ impl Parser {
                     self.advance();
                     expr = self.finish_call(expr)?;
                 }
+                Dot => {
+                    self.advance();
+                    let name = self.consume(Ident, "Expected property name after '.'.")?;
+                    expr = Expr::of(ExprKind::Get {
+                        object: Box::new(expr),
+                        name: name.clone(),
+                    });
+                }
                 _ => break,
             }
         }
@@ -474,6 +521,10 @@ impl Parser {
                 Expr::of(ExprKind::Variable {
                     name: self.previous().clone(),
                 })
+            }
+            This => {
+                self.advance();
+                Expr::of(ExprKind::This(self.previous().clone()))
             }
             _ => {
                 let peeked = self.peek();

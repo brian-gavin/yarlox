@@ -32,4 +32,8 @@ pub enum Stmt {
         name: Token,
         methods: Vec<Stmt>,
     },
+    GetterMethod {
+        name: Token,
+        body: Vec<Stmt>,
+    },
 }

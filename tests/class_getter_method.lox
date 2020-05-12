@@ -1,0 +1,15 @@
+class Foo {
+    init() {
+        this.m = "Hi";
+    }
+    msg {
+        return this.m;
+    }
+    msg_no_this {
+        return "Hi";
+    }
+}
+
+var foo = Foo();
+print foo.msg_no_this;
+print foo.msg;

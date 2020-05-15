@@ -23,6 +23,7 @@ pub enum Stmt {
         name: Token,
         params: Vec<Token>,
         body: Vec<Stmt>,
+        is_class_method: bool,
     },
     Return {
         keyword: Token,
@@ -35,5 +36,6 @@ pub enum Stmt {
     GetterMethod {
         name: Token,
         body: Vec<Stmt>,
+        is_class_method: bool,
     },
 }

@@ -1,0 +1,15 @@
+class Math {
+    class square(n) {
+        return n * n;
+    }
+    class TAU {
+        return 2 * PI;
+    }
+    class circleArea(radius) {
+        return Math.TAU * Math.square(radius);
+    }
+}
+
+print Math.square(2);
+print Math.TAU;
+print Math.circleArea(2);

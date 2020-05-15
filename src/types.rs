@@ -29,7 +29,8 @@ pub struct LoxFunction {
 #[derive(Clone, Debug)]
 pub struct LoxClass {
     name: String,
-    methods: HashMap<String, LoxFunction>,
+    methods: HashMap<String, Rc<LoxFunction>>,
+    class_methods: HashMap<String, Rc<LoxFunction>>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +58,8 @@ impl LoxType {
             LoxType::LoxFunction(func) => {
                 if let Stmt::Function { name, .. } = &func.declaration {
                     format!("<fn {}>", name.lexeme)
+                } else if let Stmt::GetterMethod { name, .. } = &func.declaration {
+                    format!("<getter {}>", name.lexeme)
                 } else {
                     panic!("LoxType::Function::Stmt is not type Function.");
                 }
@@ -181,12 +184,20 @@ impl LoxFunction {
 }
 
 impl LoxClass {
-    pub fn new(name: String, methods: HashMap<String, LoxFunction>) -> Self {
-        Self { name, methods }
+    pub fn new(
+        name: String,
+        methods: HashMap<String, Rc<LoxFunction>>,
+        class_methods: HashMap<String, Rc<LoxFunction>>,
+    ) -> Self {
+        Self {
+            name,
+            methods,
+            class_methods,
+        }
     }
 
-    pub fn get_method(&self, name: &str) -> Option<&LoxFunction> {
-        self.methods.get(name)
+    pub fn get_method(&self, name: &str) -> Option<Rc<LoxFunction>> {
+        self.methods.get(name).map(|rc| rc.clone())
     }
 }
 
@@ -203,29 +214,47 @@ impl LoxInstance {
         prop: &Token,
         intr: &mut Interpreter,
     ) -> Result<LoxType, RuntimeError> {
-        if let LoxType::LoxInstance(instance) = instance {
-            if let Some(value) = instance.borrow().fields.get(prop.lexeme.as_str()) {
-                return Ok(value.clone());
+        match instance {
+            LoxType::LoxInstance(ref instance) => {
+                if let Some(value) = instance.borrow().fields.get(prop.lexeme.as_str()) {
+                    return Ok(value.clone());
+                }
+                if let Some(method) = instance.borrow().class.get_method(prop.lexeme.as_str()) {
+                    return Ok(if method.is_getter_method() {
+                        method
+                            .bind(LoxType::LoxInstance(instance.clone()))
+                            .call(intr, &[])?
+                    } else {
+                        let method = method.bind(LoxType::LoxInstance(instance.clone()));
+                        LoxType::LoxFunction(Rc::new(method))
+                    });
+                }
+                Err(RuntimeError {
+                    token: prop.clone(),
+                    msg: format!("Undefined property {}.", prop.lexeme),
+                })
             }
-            if let Some(method) = instance.borrow().class.get_method(prop.lexeme.as_str()) {
-                return Ok(if method.is_getter_method() {
-                    method
-                        .bind(LoxType::LoxInstance(instance.clone()))
-                        .call(intr, &[])?
-                } else {
-                    let method = method.bind(LoxType::LoxInstance(instance.clone()));
-                    LoxType::LoxFunction(Rc::new(method))
-                });
+            LoxType::LoxClass(ref class) => {
+                class.class_methods.get(prop.lexeme.as_str()).map_or_else(
+                    || {
+                        Err(RuntimeError {
+                            token: prop.clone(),
+                            msg: format!("Undefined class method {}.", prop.lexeme),
+                        })
+                    },
+                    |method| {
+                        Ok(if method.is_getter_method() {
+                            method.bind(LoxType::Nil).call(intr, &[])?
+                        } else {
+                            LoxType::LoxFunction(method.clone())
+                        })
+                    },
+                )
             }
-            Err(RuntimeError {
-                token: prop.clone(),
-                msg: format!("Undefined property {}.", prop.lexeme),
-            })
-        } else {
-            Err(RuntimeError {
+            _ => Err(RuntimeError {
                 token: prop.clone(),
                 msg: String::from("Only instances have properties."),
-            })
+            }),
         }
     }
 

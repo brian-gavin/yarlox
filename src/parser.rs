@@ -98,7 +98,7 @@ impl Parser {
         let res = match self.peek().ttype {
             Fun => {
                 self.advance();
-                self.function(FunctionKind::Function, None)
+                self.function(FunctionKind::Function, None, false)
             }
             Var => {
                 self.advance();
@@ -119,7 +119,12 @@ impl Parser {
         }
     }
 
-    fn function(&mut self, kind: FunctionKind, name: Option<Token>) -> Result<Stmt, ParseError> {
+    fn function(
+        &mut self,
+        kind: FunctionKind,
+        name: Option<Token>,
+        is_class_method: bool,
+    ) -> Result<Stmt, ParseError> {
         let name = if let Some(name) = name {
             name
         } else {
@@ -154,6 +159,7 @@ impl Parser {
             params: parameters,
             name,
             body,
+            is_class_method,
         })
     }
 
@@ -187,21 +193,31 @@ impl Parser {
     }
 
     fn class_member(&mut self) -> Result<Stmt, ParseError> {
+        let class_method = if self.peek().ttype == TokenType::Class {
+            self.advance();
+            true
+        } else {
+            false
+        };
         let name = self
             .consume(Ident, "Expected method or getter name.")?
             .clone();
         if self.peek().ttype == TokenType::LeftParen {
-            self.function(FunctionKind::Method, Some(name))
+            self.function(FunctionKind::Method, Some(name), class_method)
         } else {
-            self.getter_method(name)
+            self.getter_method(name, class_method)
         }
     }
 
-    fn getter_method(&mut self, name: Token) -> Result<Stmt, ParseError> {
+    fn getter_method(&mut self, name: Token, is_class_method: bool) -> Result<Stmt, ParseError> {
         self.consume(TokenType::LeftBrace, "Expected '{{' before getter method.")?;
         let body = self.block()?;
         match body {
-            Stmt::Block(body) => Ok(Stmt::GetterMethod { name, body }),
+            Stmt::Block(body) => Ok(Stmt::GetterMethod {
+                name,
+                body,
+                is_class_method,
+            }),
             _ => panic!("block() did not return a Stmt::Block."),
         }
     }

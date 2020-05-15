@@ -16,8 +16,8 @@ enum VariableState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FunctionType {
     Function,
-    Method,
-    Getter,
+    Method(bool),
+    Getter(bool),
     Initializer,
 }
 
@@ -124,7 +124,11 @@ impl Resolver {
                     let declaration = if name.lexeme == "init" {
                         FunctionType::Initializer
                     } else {
-                        FunctionType::Method
+                        let class_method = match method {
+                            Stmt::Function{is_class_method, ..} | Stmt::GetterMethod{is_class_method,.. } => is_class_method,
+                            _ => panic!("Non-Function or GetterMethod statement in class member list"),
+                        };
+                        FunctionType::Method(*class_method)
                     };
                     self.resolve_function(method, declaration)?;
                 }
@@ -205,6 +209,16 @@ impl Resolver {
             This(ref keyword) => {
                 if self.current_class.is_none() {
                     return Err(Parser::error(keyword, "Cannot use 'this' outside a class."));
+                } else if let Some(current_function) = self.current_function {
+                    match current_function {
+                        FunctionType::Method(true) | FunctionType::Getter(true) => {
+                            return Err(Parser::error(
+                                keyword,
+                                "Cannot use 'this' in a class method.",
+                            ))
+                        }
+                        _ => {}
+                    }
                 }
                 expr.distance = self.resolve_local(keyword);
             }
@@ -234,12 +248,13 @@ impl Resolver {
             Stmt::GetterMethod {
                 ref mut body,
                 ref name,
+                ref is_class_method,
             } => {
                 let enclosing_fn = self.current_function;
                 let resolved_return = self.resolved_return;
 
                 self.resolved_return = false;
-                self.current_function = Some(FunctionType::Getter);
+                self.current_function = Some(FunctionType::Getter(*is_class_method));
                 self.begin_scope();
 
                 self.resolve(body)?;

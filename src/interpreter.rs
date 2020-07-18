@@ -135,7 +135,23 @@ impl Interpreter {
                     None => LoxType::Nil.into(),
                 }))
             }
-            Class { name, methods: method_decls } => {
+            Class { name, super_class, methods: method_decls } => {
+                let super_class = if let Some(super_class) = super_class {
+                    let sc_type = self.evaluate(&super_class)?;
+                    match sc_type {
+                        LoxType::LoxClass(super_class) => Some(super_class.clone()),
+                        _ => {
+                            let super_class_name = if let Variable{ref name} = super_class.kind {
+                                name
+                            } else {
+                                unreachable!()
+                            };
+                            return Err(Self::error(super_class_name.clone(), "Superclass must be a class."));
+                        }
+                    }
+                } else {
+                    None
+                };
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), LoxType::Nil.into());
@@ -158,7 +174,7 @@ impl Interpreter {
                         _ => panic!("Non-function in list of class methods"),
                     }
                 }
-                let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), methods, class_methods)));
+                let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), super_class, methods, class_methods)));
                 self.environment.borrow_mut().assign(name, class.into())?;
             }
             GetterMethod{..} => panic!("GetterMethod should not be executed directly, it should be done in Class execution."),

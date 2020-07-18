@@ -29,6 +29,7 @@ pub struct LoxFunction {
 #[derive(Clone, Debug)]
 pub struct LoxClass {
     name: String,
+    super_class: Option<Rc<LoxClass>>,
     methods: HashMap<String, Rc<LoxFunction>>,
     class_methods: HashMap<String, Rc<LoxFunction>>,
 }
@@ -186,11 +187,13 @@ impl LoxFunction {
 impl LoxClass {
     pub fn new(
         name: String,
+        super_class: Option<Rc<LoxClass>>,
         methods: HashMap<String, Rc<LoxFunction>>,
         class_methods: HashMap<String, Rc<LoxFunction>>,
     ) -> Self {
         Self {
             name,
+            super_class,
             methods,
             class_methods,
         }

@@ -110,11 +110,24 @@ impl Resolver {
                 self.resolve_stmt(body)?;
             }
             Stmt::Break => (),
-            Stmt::Class { name, methods } => {
+            Stmt::Class { name, super_class, methods } => {
                 let enclosing_class = self.current_class;
                 self.current_class = Some(ClassType::Class);
+
                 self.declare(name)?;
                 self.define(name);
+                if let Some(super_class) = super_class {
+                    match &super_class.kind {
+                        Variable{ name: super_class_name } => {
+                            if name.lexeme == super_class_name.lexeme {
+                                return Err(Parser::error(super_class_name, "Class cannot inherit from itself."))
+                            }
+                        }
+                        _ => unreachable!("Superclass field should only have exprkind Variable...")
+                    }
+                    self.resolve_expr(super_class)?;
+                }
+
                 self.begin_scope();
                 self.scopes
                     .last_mut()

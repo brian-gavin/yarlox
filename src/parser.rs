@@ -181,6 +181,16 @@ impl Parser {
 
     fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
         let name = self.consume(Ident, "Expect a class name.")?.clone();
+        let super_class = match self.peek().ttype {
+            TokenType::Less => {
+                self.advance();
+                self.consume(TokenType::Ident, "Expect a superclass name.")?;
+                Some(Box::new(Expr::of(ExprKind::Variable {
+                    name: self.previous().clone(),
+                })))
+            }
+            _ => None,
+        };
         self.consume(LeftBrace, "Expect '{' after class name.")?;
         let mut methods: Vec<Stmt> = vec![];
         while self.peek().ttype != RightBrace && !self.is_at_end() {
@@ -189,7 +199,11 @@ impl Parser {
 
         self.consume(RightBrace, "Expect '}' after class body.")?;
 
-        Ok(Stmt::Class { name, methods })
+        Ok(Stmt::Class {
+            name,
+            super_class,
+            methods,
+        })
     }
 
     fn class_member(&mut self) -> Result<Stmt, ParseError> {

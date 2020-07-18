@@ -200,7 +200,11 @@ impl LoxClass {
     }
 
     pub fn get_method(&self, name: &str) -> Option<Rc<LoxFunction>> {
-        self.methods.get(name).map(|rc| rc.clone())
+        self.methods.get(name).map(|rc| rc.clone()).or_else(|| {
+            self.super_class
+                .as_ref()
+                .and_then(|super_class| super_class.get_method(name))
+        })
     }
 }
 

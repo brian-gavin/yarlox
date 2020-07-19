@@ -126,6 +126,8 @@ impl Resolver {
                         _ => unreachable!("Superclass field should only have exprkind Variable...")
                     }
                     self.resolve_expr(super_class)?;
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert("super".into(), VariableState::Initialized);
                 }
 
                 self.begin_scope();
@@ -146,6 +148,9 @@ impl Resolver {
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();
+                if super_class.is_some() {
+                    self.end_scope();
+                }
                 self.current_class = enclosing_class;
             }
             Stmt::GetterMethod{..} => panic!("GetterMethod should not be resolved directly, it should be done via resolve_function."),
@@ -233,6 +238,9 @@ impl Resolver {
                         _ => {}
                     }
                 }
+                expr.distance = self.resolve_local(keyword);
+            }
+            Super { ref keyword, .. } => {
                 expr.distance = self.resolve_local(keyword);
             }
             TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),

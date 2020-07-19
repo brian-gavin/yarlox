@@ -8,7 +8,7 @@ use {
         rc::Rc,
     },
     stmt::{Stmt, Stmt::*},
-    token::Token,
+    token::{Token, TokenType},
     types::{LoxClass, LoxFunction, LoxInstance, LoxType},
 };
 
@@ -155,6 +155,12 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), LoxType::Nil.into());
+
+                if let Some(ref super_class) = super_class {
+                    self.environment = Rc::new(RefCell::new(Environment::from(self.environment.clone())));
+                    self.environment.borrow_mut().define("super".into(), LoxType::LoxClass(super_class.clone()));
+                }
+
                 let mut methods = HashMap::new();
                 let mut class_methods = HashMap::new();
                 for method in method_decls {
@@ -174,6 +180,12 @@ impl Interpreter {
                         _ => panic!("Non-function in list of class methods"),
                     }
                 }
+
+                if super_class.is_some() {
+                    let enclosing = self.environment.borrow().enclosing.as_ref().unwrap().clone();
+                    self.environment = enclosing;
+                }
+
                 let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), super_class, methods, class_methods)));
                 self.environment.borrow_mut().assign(name, class.into())?;
             }
@@ -237,6 +249,38 @@ impl Interpreter {
                     return Err(Self::error(name.clone(), "Only instances have properties."));
                 };
                 rv
+            }
+            Super {
+                ref keyword,
+                ref method,
+            } => {
+                let distance = expr.distance.unwrap();
+                let superclass = match self.environment.borrow_mut().get_at(distance, keyword)? {
+                    LoxType::LoxClass(class) => class.clone(),
+                    _ => unreachable!("Superclass LoxType that is not type LoxClass"),
+                };
+
+                let this_token = Token::build()
+                    .ttype(TokenType::This)
+                    .line(keyword.line)
+                    .lexeme("this".into())
+                    .literal("this".into())
+                    .finalize();
+
+                let object = self
+                    .environment
+                    .borrow_mut()
+                    .get_at(distance - 1, &this_token)?;
+
+                superclass
+                    .get_method(method.lexeme.as_str())
+                    .map(|method| LoxType::LoxFunction(Rc::new(method.bind(object))))
+                    .ok_or_else(|| {
+                        Self::error(
+                            method.clone(),
+                            format!("Undefined property '{}'.", &method.lexeme).as_str(),
+                        )
+                    })?
             }
         };
         Ok(res)

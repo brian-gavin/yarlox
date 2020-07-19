@@ -579,6 +579,14 @@ impl Parser {
                 self.advance();
                 Expr::of(ExprKind::This(self.previous().clone()))
             }
+            Super => {
+                let keyword = self.advance().clone();
+                self.consume(Dot, "Expect '.' after 'super'.")?;
+                let method = self
+                    .consume(Ident, "Expect superclass method name.")?
+                    .clone();
+                Expr::of(ExprKind::Super { keyword, method })
+            }
             _ => {
                 let peeked = self.peek();
                 return Err(Self::error(peeked, "Expected an expression."));

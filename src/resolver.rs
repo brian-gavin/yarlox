@@ -24,6 +24,7 @@ enum FunctionType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClassType {
     Class,
+    Subclass,
 }
 
 pub struct Resolver {
@@ -128,6 +129,7 @@ impl Resolver {
                     self.resolve_expr(super_class)?;
                     self.begin_scope();
                     self.scopes.last_mut().unwrap().insert("super".into(), VariableState::Initialized);
+                    self.current_class = Some(ClassType::Subclass);
                 }
 
                 self.begin_scope();
@@ -241,6 +243,21 @@ impl Resolver {
                 expr.distance = self.resolve_local(keyword);
             }
             Super { ref keyword, .. } => {
+                match self.current_class {
+                    Some(ClassType::Subclass) => (),
+                    Some(_) => {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot use 'super' in a class with no superclass.",
+                        ))
+                    }
+                    None => {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot use 'super' outside of a class.",
+                        ))
+                    }
+                }
                 expr.distance = self.resolve_local(keyword);
             }
             TrueLiteral | FalseLiteral | StringLiteral(_) | NumberLiteral(_) | NilLiteral => (),

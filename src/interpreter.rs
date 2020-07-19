@@ -8,7 +8,7 @@ use {
         rc::Rc,
     },
     stmt::{Stmt, Stmt::*},
-    token::Token,
+    token::{Token, TokenType},
     types::{LoxClass, LoxFunction, LoxInstance, LoxType},
 };
 
@@ -135,10 +135,32 @@ impl Interpreter {
                     None => LoxType::Nil.into(),
                 }))
             }
-            Class { name, methods: method_decls } => {
+            Class { name, super_class, methods: method_decls } => {
+                let super_class = if let Some(super_class) = super_class {
+                    let sc_type = self.evaluate(&super_class)?;
+                    match sc_type {
+                        LoxType::LoxClass(super_class) => Some(super_class.clone()),
+                        _ => {
+                            let super_class_name = if let Variable{ref name} = super_class.kind {
+                                name
+                            } else {
+                                unreachable!()
+                            };
+                            return Err(Self::error(super_class_name.clone(), "Superclass must be a class."));
+                        }
+                    }
+                } else {
+                    None
+                };
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), LoxType::Nil.into());
+
+                if let Some(ref super_class) = super_class {
+                    self.environment = Rc::new(RefCell::new(Environment::from(self.environment.clone())));
+                    self.environment.borrow_mut().define("super".into(), LoxType::LoxClass(super_class.clone()));
+                }
+
                 let mut methods = HashMap::new();
                 let mut class_methods = HashMap::new();
                 for method in method_decls {
@@ -158,7 +180,13 @@ impl Interpreter {
                         _ => panic!("Non-function in list of class methods"),
                     }
                 }
-                let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), methods, class_methods)));
+
+                if super_class.is_some() {
+                    let enclosing = self.environment.borrow().enclosing.as_ref().unwrap().clone();
+                    self.environment = enclosing;
+                }
+
+                let class = LoxType::LoxClass(Rc::new(LoxClass::new(name.lexeme.clone(), super_class, methods, class_methods)));
                 self.environment.borrow_mut().assign(name, class.into())?;
             }
             GetterMethod{..} => panic!("GetterMethod should not be executed directly, it should be done in Class execution."),
@@ -221,6 +249,38 @@ impl Interpreter {
                     return Err(Self::error(name.clone(), "Only instances have properties."));
                 };
                 rv
+            }
+            Super {
+                ref keyword,
+                ref method,
+            } => {
+                let distance = expr.distance.unwrap();
+                let superclass = match self.environment.borrow_mut().get_at(distance, keyword)? {
+                    LoxType::LoxClass(class) => class.clone(),
+                    _ => unreachable!("Superclass LoxType that is not type LoxClass"),
+                };
+
+                let this_token = Token::build()
+                    .ttype(TokenType::This)
+                    .line(keyword.line)
+                    .lexeme("this".into())
+                    .literal("this".into())
+                    .finalize();
+
+                let object = self
+                    .environment
+                    .borrow_mut()
+                    .get_at(distance - 1, &this_token)?;
+
+                superclass
+                    .get_method(method.lexeme.as_str())
+                    .map(|method| LoxType::LoxFunction(Rc::new(method.bind(object))))
+                    .ok_or_else(|| {
+                        Self::error(
+                            method.clone(),
+                            format!("Undefined property '{}'.", &method.lexeme).as_str(),
+                        )
+                    })?
             }
         };
         Ok(res)

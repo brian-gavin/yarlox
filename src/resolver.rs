@@ -24,6 +24,7 @@ enum FunctionType {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClassType {
     Class,
+    Subclass,
 }
 
 pub struct Resolver {
@@ -110,11 +111,27 @@ impl Resolver {
                 self.resolve_stmt(body)?;
             }
             Stmt::Break => (),
-            Stmt::Class { name, methods } => {
+            Stmt::Class { name, super_class, methods } => {
                 let enclosing_class = self.current_class;
                 self.current_class = Some(ClassType::Class);
+
                 self.declare(name)?;
                 self.define(name);
+                if let Some(super_class) = super_class {
+                    match &super_class.kind {
+                        Variable{ name: super_class_name } => {
+                            if name.lexeme == super_class_name.lexeme {
+                                return Err(Parser::error(super_class_name, "Class cannot inherit from itself."))
+                            }
+                        }
+                        _ => unreachable!("Superclass field should only have exprkind Variable...")
+                    }
+                    self.resolve_expr(super_class)?;
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert("super".into(), VariableState::Initialized);
+                    self.current_class = Some(ClassType::Subclass);
+                }
+
                 self.begin_scope();
                 self.scopes
                     .last_mut()
@@ -133,6 +150,9 @@ impl Resolver {
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();
+                if super_class.is_some() {
+                    self.end_scope();
+                }
                 self.current_class = enclosing_class;
             }
             Stmt::GetterMethod{..} => panic!("GetterMethod should not be resolved directly, it should be done via resolve_function."),
@@ -218,6 +238,24 @@ impl Resolver {
                             ))
                         }
                         _ => {}
+                    }
+                }
+                expr.distance = self.resolve_local(keyword);
+            }
+            Super { ref keyword, .. } => {
+                match self.current_class {
+                    Some(ClassType::Subclass) => (),
+                    Some(_) => {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot use 'super' in a class with no superclass.",
+                        ))
+                    }
+                    None => {
+                        return Err(Parser::error(
+                            keyword,
+                            "Cannot use 'super' outside of a class.",
+                        ))
                     }
                 }
                 expr.distance = self.resolve_local(keyword);

@@ -59,6 +59,10 @@ pub enum ExprKind {
         value: Box<Expr>,
     },
     This(Token),
+    Super {
+        keyword: Token,
+        method: Token,
+    },
 }
 
 impl fmt::Display for Expr {

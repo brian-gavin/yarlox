@@ -48,6 +48,7 @@ impl Printer {
             Get { object, name } => format!("{}.{}", self.eval(&object), name.lexeme),
             Set { object, value, .. } => format!("{} = {}", self.eval(&object), self.eval(&value)),
             This(_) => String::from("this"),
+            Super { method, .. } => format!("super.{}", method.lexeme),
         }
     }
 }

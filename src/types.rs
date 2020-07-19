@@ -29,6 +29,7 @@ pub struct LoxFunction {
 #[derive(Clone, Debug)]
 pub struct LoxClass {
     name: String,
+    super_class: Option<Rc<LoxClass>>,
     methods: HashMap<String, Rc<LoxFunction>>,
     class_methods: HashMap<String, Rc<LoxFunction>>,
 }
@@ -186,18 +187,24 @@ impl LoxFunction {
 impl LoxClass {
     pub fn new(
         name: String,
+        super_class: Option<Rc<LoxClass>>,
         methods: HashMap<String, Rc<LoxFunction>>,
         class_methods: HashMap<String, Rc<LoxFunction>>,
     ) -> Self {
         Self {
             name,
+            super_class,
             methods,
             class_methods,
         }
     }
 
     pub fn get_method(&self, name: &str) -> Option<Rc<LoxFunction>> {
-        self.methods.get(name).map(|rc| rc.clone())
+        self.methods.get(name).map(|rc| rc.clone()).or_else(|| {
+            self.super_class
+                .as_ref()
+                .and_then(|super_class| super_class.get_method(name))
+        })
     }
 }
 

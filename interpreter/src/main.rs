@@ -1,7 +1,7 @@
 extern crate env_logger;
-extern crate yarlox;
+extern crate yarlox_interpreter;
 
-use {std::env, yarlox::run_file, yarlox::run_prompt};
+use {std::env, yarlox_interpreter::run_file, yarlox_interpreter::run_prompt};
 
 fn main() {
     env_logger::init();

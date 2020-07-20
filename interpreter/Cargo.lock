@@ -461,8 +461,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "yarlox"
-version = "0.1.0"
+name = "yarlox-interpreter"
+version = "1.0.0"
 dependencies = [
  "ansi_term 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::io::prelude::*;
-use vm::InterpretError;
+use vm::{InterpretError, Vm};
 
 #[macro_use]
 extern crate log;
@@ -35,6 +35,7 @@ pub fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
 }
 
 fn interpret(s: &str) -> Result<(), InterpretError> {
-    compiler::compile(s);
-    Ok(())
+    let chunk = compiler::compile(s).map_err(|_| InterpretError::CompileTime)?;
+    let mut vm = Vm::new(chunk);
+    vm.interpret()
 }

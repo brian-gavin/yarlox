@@ -17,7 +17,7 @@ pub enum OpCode {
 pub struct Chunk {
     code: Vec<OpCode>,
     constants: Vec<Value>,
-    lines: HashMap<usize, u32>,
+    lines: HashMap<usize, usize>,
 }
 
 impl fmt::Display for Chunk {
@@ -56,7 +56,7 @@ impl Chunk {
         (self.constants.len() - 1).try_into().unwrap()
     }
 
-    pub fn write_chunk(&mut self, chunk: OpCode, line: u32) {
+    pub fn write_chunk(&mut self, chunk: OpCode, line: usize) {
         self.code.push(chunk);
         self.lines.insert(self.code.len() - 1, line);
     }

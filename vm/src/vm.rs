@@ -2,6 +2,10 @@ use crate::{
     chunk::{Chunk, OpCode},
     value::Value,
 };
+use std::{
+    error::Error,
+    fmt::{self, Display},
+};
 pub struct Vm {
     chunk: Chunk,
     ip: usize,
@@ -13,6 +17,14 @@ pub enum InterpretError {
     CompileTime,
     Runtime,
 }
+
+impl Display for InterpretError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for InterpretError {}
 
 pub type InterpretResult = Result<(), InterpretError>;
 

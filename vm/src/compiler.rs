@@ -85,6 +85,10 @@ impl<'a> CompilerState<'a> {
         }
     }
 
+    pub fn current_chunk(&self) -> &Chunk {
+        &self.current_chunk
+    }
+
     // In the future... the chunk handling code will be "more complicated"
     // it might be a good idea to hand over the current_chunk code to a
     // different struct that will manage the current chunk.
@@ -138,12 +142,20 @@ impl<'a> CompilerState<'a> {
         self.parser.advance();
         expression(&mut self);
         self.consume(None, "Expected end of expression.");
-        end_compiler(&mut self);
+        self.end_compiler();
 
         if self.parser.had_error {
             Err(())
         } else {
             Ok(self.current_chunk)
+        }
+    }
+
+    fn end_compiler(&mut self) {
+        emit_return(self);
+
+        if !self.parser.had_error {
+            debug!("\n----- code -----\n{}", self.current_chunk())
         }
     }
 
@@ -232,11 +244,6 @@ fn emit_constant(state: &mut CompilerState, value: Value) {
     let constant = OpCode::Constant(state.make_constant(value));
     emit_byte(state, constant);
 }
-
-fn end_compiler(state: &mut CompilerState) {
-    emit_return(state);
-}
-
 fn binary(state: &mut CompilerState) {
     let op_token_kind = state.previous().map(Token::kind);
 

@@ -218,6 +218,7 @@ impl ParseRule {
             Some(Minus) => (Some(unary), Some(binary), Precedence::Term),
             Some(Plus) => (None, Some(binary), Precedence::Term),
             Some(Slash) | Some(Star) => (None, Some(binary), Precedence::Factor),
+            Some(Bang) => (Some(unary), None, Precedence::None),
             Some(False) | Some(True) | Some(Nil) => (Some(literal), None, Precedence::None),
             Some(Number) => (Some(number), None, Precedence::None),
             _ => (None, None, Precedence::None),
@@ -289,6 +290,7 @@ fn unary(state: &mut CompilerState) {
     state.parse_precedence(Precedence::Unary);
     match op_token_kind {
         Some(TokenKind::Minus) => emit_byte(state, OpCode::Negate),
+        Some(TokenKind::Bang) => emit_byte(state, OpCode::Not),
         _ => unreachable!(),
     }
 }

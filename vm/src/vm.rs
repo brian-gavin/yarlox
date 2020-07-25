@@ -34,14 +34,11 @@ pub type InterpretResult = Result<(), InterpretError>;
 macro_rules! binary_op {
     ($vm:ident, $op:tt) => {
         {
-            match ($vm.stack.last(), $vm.stack.get($vm.stack.len() - 2)) {
-                (Some(Value::Number(_)), Some(Value::Number(_))) => {
-                    let b = $vm.stack.pop().expect("empty stack!");
-                    let a = $vm.stack.last_mut().expect("empty stack!");
-                    *a = *a $op b;
-                }
-                (None, _) | (_, None) => panic!("empty stack!"),
-                _ => return Err($vm.runtime_error("Operands must be numbers.")),
+            let b = $vm.stack.pop().expect("empty stack!");
+            let a = $vm.stack.last_mut().expect("empty stack!");
+            match *a $op b {
+                Ok(v) => *a = v,
+                Err(msg) => return Err($vm.runtime_error(msg.as_str())),
             }
         }
     };
@@ -75,11 +72,15 @@ impl Vm {
                 Subtract => binary_op!(self, -),
                 Multiply => binary_op!(self, *),
                 Divide => binary_op!(self, /),
+                Not => {
+                    let b = self.stack.last_mut().expect("empty stack!");
+                    *b = !*b;
+                }
                 Negate => {
-                    if let Value::Number(v) = self.stack.last_mut().expect("empty stack!") {
-                        *v = -*v;
-                    } else {
-                        return Err(self.runtime_error("Operand must be a number"));
+                    let v = self.stack.last_mut().expect("empty stack!");
+                    match -*v {
+                        Ok(value) => *v = value,
+                        Err(msg) => return Err(self.runtime_error(msg.as_str())),
                     }
                 }
                 Return => {

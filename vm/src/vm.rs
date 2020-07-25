@@ -15,7 +15,7 @@ pub struct Vm {
 #[derive(Debug)]
 pub enum InterpretError {
     CompileTime,
-    Runtime,
+    Runtime(String),
 }
 
 impl Display for InterpretError {
@@ -31,9 +31,15 @@ pub type InterpretResult = Result<(), InterpretError>;
 macro_rules! binary_op {
     ($vm:ident, $op:tt) => {
         {
-            let b = $vm.stack.pop().expect("empty stack!");
-            let a = $vm.stack.last_mut().expect("empty stack!");
-            *a = *a $op b;
+            match ($vm.stack.last(), $vm.stack.get($vm.stack.len() - 2)) {
+                (Some(Value::Number(_)), Some(Value::Number(_))) => {
+                    let b = $vm.stack.pop().expect("empty stack!");
+                    let a = $vm.stack.last_mut().expect("empty stack!");
+                    *a = *a $op b;
+                }
+                (None, _) | (_, None) => panic!("empty stack!"),
+                _ => return Err($vm.runtime_error("Operands must be numbers.")),
+            }
         }
     };
 }
@@ -64,8 +70,11 @@ impl Vm {
                 Multiply => binary_op!(self, *),
                 Divide => binary_op!(self, /),
                 Negate => {
-                    let v = self.stack.last_mut().expect("empty stack!");
-                    *v = -*v;
+                    if let Value::Number(v) = self.stack.last_mut().expect("empty stack!") {
+                        *v = -*v;
+                    } else {
+                        return Err(self.runtime_error("Operand must be a number"));
+                    }
                 }
                 Return => {
                     println!("{}", self.stack.pop().expect("empty stack!"));
@@ -73,5 +82,10 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn runtime_error(&self, msg: &str) -> InterpretError {
+        let line = self.chunk.lines().get(&(self.ip - 1)).unwrap();
+        InterpretError::Runtime(format!("{}\n[line {}] in script", msg, line))
     }
 }

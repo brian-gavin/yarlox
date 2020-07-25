@@ -68,4 +68,8 @@ impl Chunk {
     pub fn get_constant(&self, idx: usize) -> &Value {
         self.constants.get(idx).expect("Out of bound constant")
     }
+
+    pub fn lines(&self) -> &HashMap<usize, usize> {
+        &self.lines
+    }
 }

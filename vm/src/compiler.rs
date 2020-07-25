@@ -270,8 +270,8 @@ fn grouping(state: &mut CompilerState) {
 
 fn number(state: &mut CompilerState) {
     let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
-    let value: Value = lexeme.parse().expect("Invalid number :(");
-    emit_constant(state, value);
+    let value = lexeme.parse().expect("Invalid number :(");
+    emit_constant(state, Value::Number(value));
 }
 
 fn unary(state: &mut CompilerState) {

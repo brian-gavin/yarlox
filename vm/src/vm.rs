@@ -32,16 +32,14 @@ impl Error for InterpretError {}
 pub type InterpretResult = Result<(), InterpretError>;
 
 macro_rules! binary_op {
-    ($vm:ident, $op:tt) => {
-        {
-            let b = $vm.stack.pop().expect("empty stack!");
-            let a = $vm.stack.last_mut().expect("empty stack!");
-            match *a $op b {
-                Ok(v) => *a = v,
-                Err(msg) => return Err($vm.runtime_error(msg.as_str())),
-            }
-        }
-    };
+    ($vm:ident, $value_type:ident, $op:tt) => {{
+        let b = $vm.stack.pop().expect("empty stack!");
+        let a = $vm.stack.last_mut().expect("empty stack!");
+        *a = match (&a, b) {
+            (Value::Number(a), Value::Number(b)) => Value::$value_type(*a $op b),
+            _ => return Err($vm.runtime_error("Operand must be a number.")),
+        };
+    }};
 }
 
 impl Vm {
@@ -68,10 +66,17 @@ impl Vm {
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),
                 False => self.stack.push(Value::Boolean(false)),
-                Add => binary_op!(self, +),
-                Subtract => binary_op!(self, -),
-                Multiply => binary_op!(self, *),
-                Divide => binary_op!(self, /),
+                Equal => {
+                    let b = self.stack.pop().expect("empty stack!");
+                    let a = self.stack.last_mut().expect("empty stack!");
+                    *a = Value::Boolean(*a == b);
+                }
+                Greater => binary_op!(self, Boolean, >),
+                Less => binary_op!(self, Boolean, <),
+                Add => binary_op!(self, Number, +),
+                Subtract => binary_op!(self, Number, -),
+                Multiply => binary_op!(self, Number, *),
+                Divide => binary_op!(self, Number, /),
                 Not => {
                     let b = self.stack.last_mut().expect("empty stack!");
                     *b = !*b;

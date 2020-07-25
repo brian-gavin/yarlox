@@ -219,6 +219,10 @@ impl ParseRule {
             Some(Plus) => (None, Some(binary), Precedence::Term),
             Some(Slash) | Some(Star) => (None, Some(binary), Precedence::Factor),
             Some(Bang) => (Some(unary), None, Precedence::None),
+            Some(BangEqual) | Some(EqualEqual) => (None, Some(binary), Precedence::Equality),
+            Some(Greater) | Some(GreaterEqual) | Some(Less) | Some(LessEqual) => {
+                (None, Some(binary), Precedence::Comparison)
+            }
             Some(False) | Some(True) | Some(Nil) => (Some(literal), None, Precedence::None),
             Some(Number) => (Some(number), None, Precedence::None),
             _ => (None, None, Precedence::None),
@@ -237,6 +241,12 @@ fn emit_byte(state: &mut CompilerState, byte: OpCode) {
     current_chunk.write_chunk(byte, line);
 }
 
+fn emit_bytes(state: &mut CompilerState, bytes: &[OpCode]) {
+    for byte in bytes {
+        emit_byte(state, *byte);
+    }
+}
+
 fn emit_return(state: &mut CompilerState) {
     emit_byte(state, OpCode::Return);
 }
@@ -247,19 +257,28 @@ fn emit_constant(state: &mut CompilerState, value: Value) {
 }
 
 fn binary(state: &mut CompilerState) {
+    use TokenKind::*;
+    const EB: fn(&mut CompilerState, OpCode) = emit_byte;
+    const EBS: fn(&mut CompilerState, &[OpCode]) = emit_bytes;
+
     let op_token_kind = state.previous().map(Token::kind);
 
-    // uncomment these when done :)
     let rule = ParseRule::get_rule(op_token_kind);
     state.parse_precedence(rule.precedence.next_highest());
-    let opcode = match op_token_kind {
-        Some(TokenKind::Plus) => OpCode::Add,
-        Some(TokenKind::Minus) => OpCode::Subtract,
-        Some(TokenKind::Star) => OpCode::Multiply,
-        Some(TokenKind::Slash) => OpCode::Divide,
+
+    match op_token_kind {
+        Some(BangEqual) => EBS(state, &[OpCode::Equal, OpCode::Not]),
+        Some(EqualEqual) => EB(state, OpCode::Equal),
+        Some(Greater) => EB(state, OpCode::Greater),
+        Some(GreaterEqual) => EBS(state, &[OpCode::Less, OpCode::Not]),
+        Some(Less) => EB(state, OpCode::Less),
+        Some(TokenKind::LessEqual) => EBS(state, &[OpCode::Greater, OpCode::Not]),
+        Some(Plus) => EB(state, OpCode::Add),
+        Some(Minus) => EB(state, OpCode::Subtract),
+        Some(Star) => EB(state, OpCode::Multiply),
+        Some(Slash) => EB(state, OpCode::Divide),
         _ => unreachable!(),
     };
-    emit_byte(state, opcode);
 }
 
 fn literal(state: &mut CompilerState) {

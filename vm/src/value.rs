@@ -1,5 +1,8 @@
 use std::fmt;
-use std::ops::{Add, Div, Mul, Neg, Not, Sub};
+use std::{
+    cmp::Ordering,
+    ops::{Add, Div, Mul, Neg, Not, Sub},
+};
 
 type OperationResult = Result<Value, String>;
 #[derive(Debug, Copy, Clone)]
@@ -83,5 +86,25 @@ impl Not for Value {
     type Output = Value;
     fn not(self) -> Self::Output {
         Value::Boolean(self.is_falsey())
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+            (Value::Boolean(b1), Value::Boolean(b2)) => b1 == b2,
+            (Value::Nil, Value::Nil) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Value) -> Option<Ordering> {
+        match (self, other) {
+            (Value::Number(n1), Value::Number(n2)) => n1.partial_cmp(n2),
+            _ => None,
+        }
     }
 }

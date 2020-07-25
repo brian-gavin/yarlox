@@ -20,7 +20,10 @@ pub enum InterpretError {
 
 impl Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            InterpretError::Runtime(msg) => write!(f, "{}", msg),
+            InterpretError::CompileTime => write!(f, "{:?}", self),
+        }
     }
 }
 
@@ -65,6 +68,9 @@ impl Vm {
                     let constant = self.chunk.get_constant(*idx as _);
                     self.stack.push(*constant);
                 }
+                Nil => self.stack.push(Value::Nil),
+                True => self.stack.push(Value::Boolean(true)),
+                False => self.stack.push(Value::Boolean(false)),
                 Add => binary_op!(self, +),
                 Subtract => binary_op!(self, -),
                 Multiply => binary_op!(self, *),

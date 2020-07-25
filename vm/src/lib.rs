@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::io::prelude::*;
+use std::io::{self, prelude::*};
 use vm::{InterpretError, Vm};
 
 #[macro_use]
@@ -16,14 +16,18 @@ pub fn repl() -> Result<(), Box<dyn Error>> {
     let mut line = String::new();
     loop {
         line.clear();
-        let stdin = std::io::stdin();
-        println!("lox> ");
-        let n = stdin.read_line(&mut line)?;
+        print!("\nlox> ");
+        io::stdout().flush()?;
+
+        let n = io::stdin().read_line(&mut line)?;
         if n == 0 {
             break;
         }
-        let _e = interpret(&line);
+        if let Err(e) = interpret(&line) {
+            eprintln!("{}", e);
+        }
     }
+    println!("");
     Ok(())
 }
 

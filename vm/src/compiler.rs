@@ -217,8 +217,8 @@ impl ParseRule {
             Some(LeftParen) => (Some(grouping), None, Precedence::None),
             Some(Minus) => (Some(unary), Some(binary), Precedence::Term),
             Some(Plus) => (None, Some(binary), Precedence::Term),
-            Some(Slash) => (None, Some(binary), Precedence::Factor),
-            Some(Star) => (None, Some(binary), Precedence::Factor),
+            Some(Slash) | Some(Star) => (None, Some(binary), Precedence::Factor),
+            Some(False) | Some(True) | Some(Nil) => (Some(literal), None, Precedence::None),
             Some(Number) => (Some(number), None, Precedence::None),
             _ => (None, None, Precedence::None),
         };
@@ -244,6 +244,7 @@ fn emit_constant(state: &mut CompilerState, value: Value) {
     let constant = OpCode::Constant(state.make_constant(value));
     emit_byte(state, constant);
 }
+
 fn binary(state: &mut CompilerState) {
     let op_token_kind = state.previous().map(Token::kind);
 
@@ -258,6 +259,15 @@ fn binary(state: &mut CompilerState) {
         _ => unreachable!(),
     };
     emit_byte(state, opcode);
+}
+
+fn literal(state: &mut CompilerState) {
+    match state.previous().map(Token::kind) {
+        Some(TokenKind::False) => emit_byte(state, OpCode::False),
+        Some(TokenKind::Nil) => emit_byte(state, OpCode::Nil),
+        Some(TokenKind::True) => emit_byte(state, OpCode::True),
+        _ => unreachable!(),
+    }
 }
 
 fn grouping(state: &mut CompilerState) {

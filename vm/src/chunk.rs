@@ -5,6 +5,9 @@ use std::{collections::HashMap, convert::TryInto, fmt};
 #[repr(u8)]
 pub enum OpCode {
     Constant(u8),
+    Nil,
+    True,
+    False,
     Add,
     Subtract,
     Multiply,

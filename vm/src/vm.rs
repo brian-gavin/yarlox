@@ -79,13 +79,13 @@ impl Vm {
                 Divide => binary_op!(self, Number, /),
                 Not => {
                     let b = self.stack.last_mut().expect("empty stack!");
-                    *b = !*b;
+                    *b = Value::Boolean(b.is_falsey());
                 }
                 Negate => {
                     let v = self.stack.last_mut().expect("empty stack!");
-                    match -*v {
-                        Ok(value) => *v = value,
-                        Err(msg) => return Err(self.runtime_error(msg.as_str())),
+                    *v = match &v {
+                        Value::Number(n) => Value::Number(-n),
+                        _ => return Err(self.runtime_error("Operand must be a number.")),
                     }
                 }
                 Return => {

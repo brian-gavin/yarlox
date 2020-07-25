@@ -1,14 +1,28 @@
 use itertools::{multipeek, MultiPeek};
 use std::str::Chars;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     kind: TokenKind,
     lexeme: String,
     line: usize,
 }
 
-#[derive(Debug)]
+impl Token {
+    pub fn kind(&self) -> TokenKind {
+        self.kind
+    }
+
+    pub fn lexeme(&self) -> &str {
+        self.lexeme.as_str()
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum TokenKind {
     // Single-character tokens.
     LeftParen,

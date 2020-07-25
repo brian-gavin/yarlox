@@ -17,7 +17,7 @@ pub enum OpCode {
 pub struct Chunk {
     code: Vec<OpCode>,
     constants: Vec<Value>,
-    lines: HashMap<usize, u32>,
+    lines: HashMap<usize, usize>,
 }
 
 impl fmt::Display for Chunk {
@@ -51,12 +51,12 @@ impl Chunk {
     }
 
     #[must_use = "Add the return value to this to a OpCode::Constant"]
-    pub fn add_constant(&mut self, constant: Value) -> u8 {
+    pub fn add_constant(&mut self, constant: Value) -> Result<u8, <usize as TryInto<u8>>::Error> {
         self.constants.push(constant);
-        (self.constants.len() - 1).try_into().unwrap()
+        (self.constants.len() - 1).try_into()
     }
 
-    pub fn write_chunk(&mut self, chunk: OpCode, line: u32) {
+    pub fn write_chunk(&mut self, chunk: OpCode, line: usize) {
         self.code.push(chunk);
         self.lines.insert(self.code.len() - 1, line);
     }

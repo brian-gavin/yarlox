@@ -5,10 +5,17 @@ use std::{collections::HashMap, convert::TryInto, fmt};
 #[repr(u8)]
 pub enum OpCode {
     Constant(u8),
+    Nil,
+    True,
+    False,
+    Equal,
+    Greater,
+    Less,
     Add,
     Subtract,
     Multiply,
     Divide,
+    Not,
     Negate,
     Return,
 }
@@ -67,5 +74,9 @@ impl Chunk {
 
     pub fn get_constant(&self, idx: usize) -> &Value {
         self.constants.get(idx).expect("Out of bound constant")
+    }
+
+    pub fn lines(&self) -> &HashMap<usize, usize> {
+        &self.lines
     }
 }

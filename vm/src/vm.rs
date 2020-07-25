@@ -15,12 +15,15 @@ pub struct Vm {
 #[derive(Debug)]
 pub enum InterpretError {
     CompileTime,
-    Runtime,
+    Runtime(String),
 }
 
 impl Display for InterpretError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            InterpretError::Runtime(msg) => write!(f, "{}", msg),
+            InterpretError::CompileTime => write!(f, "{:?}", self),
+        }
     }
 }
 
@@ -29,13 +32,14 @@ impl Error for InterpretError {}
 pub type InterpretResult = Result<(), InterpretError>;
 
 macro_rules! binary_op {
-    ($vm:ident, $op:tt) => {
-        {
-            let b = $vm.stack.pop().expect("empty stack!");
-            let a = $vm.stack.last_mut().expect("empty stack!");
-            *a = *a $op b;
-        }
-    };
+    ($vm:ident, $value_type:ident, $op:tt) => {{
+        let b = $vm.stack.pop().expect("empty stack!");
+        let a = $vm.stack.last_mut().expect("empty stack!");
+        *a = match (&a, b) {
+            (Value::Number(a), Value::Number(b)) => Value::$value_type(*a $op b),
+            _ => return Err($vm.runtime_error("Operand must be a number.")),
+        };
+    }};
 }
 
 impl Vm {
@@ -59,13 +63,30 @@ impl Vm {
                     let constant = self.chunk.get_constant(*idx as _);
                     self.stack.push(*constant);
                 }
-                Add => binary_op!(self, +),
-                Subtract => binary_op!(self, -),
-                Multiply => binary_op!(self, *),
-                Divide => binary_op!(self, /),
+                Nil => self.stack.push(Value::Nil),
+                True => self.stack.push(Value::Boolean(true)),
+                False => self.stack.push(Value::Boolean(false)),
+                Equal => {
+                    let b = self.stack.pop().expect("empty stack!");
+                    let a = self.stack.last_mut().expect("empty stack!");
+                    *a = Value::Boolean(*a == b);
+                }
+                Greater => binary_op!(self, Boolean, >),
+                Less => binary_op!(self, Boolean, <),
+                Add => binary_op!(self, Number, +),
+                Subtract => binary_op!(self, Number, -),
+                Multiply => binary_op!(self, Number, *),
+                Divide => binary_op!(self, Number, /),
+                Not => {
+                    let b = self.stack.last_mut().expect("empty stack!");
+                    *b = Value::Boolean(b.is_falsey());
+                }
                 Negate => {
                     let v = self.stack.last_mut().expect("empty stack!");
-                    *v = -*v;
+                    *v = match &v {
+                        Value::Number(n) => Value::Number(-n),
+                        _ => return Err(self.runtime_error("Operand must be a number.")),
+                    }
                 }
                 Return => {
                     println!("{}", self.stack.pop().expect("empty stack!"));
@@ -73,5 +94,10 @@ impl Vm {
                 }
             }
         }
+    }
+
+    fn runtime_error(&self, msg: &str) -> InterpretError {
+        let line = self.chunk.lines().get(&(self.ip - 1)).unwrap();
+        InterpretError::Runtime(format!("{}\n[line {}] in script", msg, line))
     }
 }

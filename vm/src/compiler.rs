@@ -1,10 +1,11 @@
 use crate::{
     chunk::{Chunk, OpCode},
     scanner::{Scanner, Token, TokenKind},
+    value::Value,
 };
 
 pub fn compile(source: &str) -> Result<Chunk, ()> {
-    let mut compiler = Compiler::new(Parser::new(Scanner::new(source.into())));
+    let compiler = CompilerState::new(Parser::new(Scanner::new(source.into())));
     compiler.compile()
 }
 
@@ -71,16 +72,14 @@ impl<'a> Parser<'a> {
     }
 }
 
-struct Compiler<'a> {
+struct CompilerState<'a> {
     parser: Parser<'a>,
     current_chunk: Chunk,
 }
 
-type CompilerResult = Result<(), ()>;
-
-impl<'a> Compiler<'a> {
-    pub fn new(parser: Parser) -> Compiler {
-        Compiler {
+impl<'a> CompilerState<'a> {
+    pub fn new(parser: Parser) -> CompilerState {
+        CompilerState {
             parser,
             current_chunk: Chunk::new(),
         }
@@ -93,40 +92,53 @@ impl<'a> Compiler<'a> {
     // as in, acessing current_chunk directly in an error. Using another struct
     // for this will be cleaner.
     // Note for the future :)
-    fn current_chunk_mut(&mut self) -> &mut Chunk {
+    pub fn current_chunk_mut(&mut self) -> &mut Chunk {
         &mut self.current_chunk
     }
 
-    fn emit_byte(&mut self, byte: OpCode) {
-        let line = self
-            .parser
-            .previous
-            .as_ref()
-            .expect("No previous token")
-            .line;
-        let current_chunk = self.current_chunk_mut();
-        current_chunk.write_chunk(byte, line);
+    pub fn current(&self) -> Option<&Token> {
+        self.parser.current.as_ref()
     }
 
-    fn emit_bytes(&mut self, bytes: &[OpCode]) {
-        for byte in bytes {
-            self.emit_byte(*byte);
+    pub fn previous(&self) -> Option<&Token> {
+        self.parser.previous.as_ref()
+    }
+
+    pub fn make_constant(&mut self, value: Value) -> u8 {
+        let current_chunk = self.current_chunk_mut();
+        let constant = current_chunk.add_constant(value);
+        match constant {
+            Ok(c) => c,
+            Err(_) => {
+                self.parser.error("Too many constants in one chunk");
+                0
+            }
         }
     }
 
-    fn emit_return(&mut self) {
-        self.emit_byte(OpCode::Return);
-    }
-
-    fn end_compiler(&mut self) {
-        self.emit_return();
-    }
-
-    fn compile(mut self) -> Result<Chunk, ()> {
+    pub fn parse_precedence(&mut self, precedence: Precedence) {
         self.parser.advance();
-        self.expression()?;
+        let previous = self.previous();
+        let prefix_rule = ParseRule::get_rule(previous.map(|token| token.kind)).prefix;
+        match prefix_rule {
+            Some(prefix_rule) => prefix_rule(self),
+            None => self.parser.error("Expected expression."),
+        }
+
+        while precedence <= ParseRule::get_rule(self.current().map(|token| token.kind)).precedence {
+            self.parser.advance();
+            let infix_rule = ParseRule::get_rule(self.previous().map(|token| token.kind))
+                .infix
+                .unwrap();
+            infix_rule(self);
+        }
+    }
+
+    pub fn compile(mut self) -> Result<Chunk, ()> {
+        self.parser.advance();
+        expression(&mut self);
         self.consume(None, "Expected end of expression.");
-        self.end_compiler();
+        end_compiler(&mut self);
 
         if self.parser.had_error {
             Err(())
@@ -135,15 +147,138 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn expression(&mut self) -> CompilerResult {
-        todo!()
-    }
-
-    fn consume(&mut self, kind: Option<TokenKind>, msg: &str) {
-        if self.parser.current.as_ref().map(|token| token.kind) == kind {
+    pub fn consume(&mut self, kind: Option<TokenKind>, msg: &str) {
+        if self.current().map(|token| token.kind) == kind {
             self.parser.advance();
         } else {
             self.parser.error_at_current(msg);
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+enum Precedence {
+    None,
+    Assignment, // =
+    Or,         // or
+    And,        // and
+    Equality,   // == !=
+    Comparison, // < > <= >=
+    Term,       // + -
+    Factor,     // * /
+    Unary,      // ! -
+    Call,       // . ()
+    Primary,
+}
+
+impl Precedence {
+    fn next_highest(self) -> Precedence {
+        match self {
+            Precedence::None => Precedence::Assignment,
+            Precedence::Assignment => Precedence::Or,
+            Precedence::Or => Precedence::And,
+            Precedence::And => Precedence::Equality,
+            Precedence::Equality => Precedence::Comparison,
+            Precedence::Comparison => Precedence::Term,
+            Precedence::Term => Precedence::Factor,
+            Precedence::Factor => Precedence::Unary,
+            Precedence::Unary => Precedence::Call,
+            Precedence::Call => Precedence::Primary,
+            Precedence::Primary => Precedence::Primary,
+        }
+    }
+}
+
+type ParseFn = fn(&mut CompilerState);
+
+struct ParseRule {
+    prefix: Option<ParseFn>,
+    infix: Option<ParseFn>,
+    precedence: Precedence,
+}
+
+impl ParseRule {
+    fn get_rule(kind: Option<TokenKind>) -> ParseRule {
+        use TokenKind::*;
+        let (prefix, infix, precedence): (Option<ParseFn>, Option<ParseFn>, Precedence) = match kind
+        {
+            Some(LeftParen) => (Some(grouping), None, Precedence::None),
+            Some(Minus) => (Some(unary), Some(binary), Precedence::Term),
+            Some(Plus) => (None, Some(binary), Precedence::Term),
+            Some(Slash) => (None, Some(binary), Precedence::Factor),
+            Some(Star) => (None, Some(binary), Precedence::Factor),
+            Some(Number) => (Some(number), None, Precedence::None),
+            _ => (None, None, Precedence::None),
+        };
+        ParseRule {
+            prefix,
+            infix,
+            precedence,
+        }
+    }
+}
+
+fn emit_byte(state: &mut CompilerState, byte: OpCode) {
+    let line = state.previous().map(|token| token.line).unwrap_or_default();
+    let current_chunk = state.current_chunk_mut();
+    current_chunk.write_chunk(byte, line);
+}
+
+fn emit_return(state: &mut CompilerState) {
+    emit_byte(state, OpCode::Return);
+}
+
+fn emit_constant(state: &mut CompilerState, value: Value) {
+    let constant = OpCode::Constant(state.make_constant(value));
+    emit_byte(state, constant);
+}
+
+fn end_compiler(state: &mut CompilerState) {
+    emit_return(state);
+}
+
+fn binary(state: &mut CompilerState) {
+    let op_token_kind = state.previous().map(|token| token.kind);
+
+    // uncomment these when done :)
+    let rule = ParseRule::get_rule(op_token_kind);
+    state.parse_precedence(rule.precedence.next_highest());
+    let opcode = match op_token_kind {
+        Some(TokenKind::Plus) => OpCode::Add,
+        Some(TokenKind::Minus) => OpCode::Subtract,
+        Some(TokenKind::Star) => OpCode::Multiply,
+        Some(TokenKind::Slash) => OpCode::Divide,
+        _ => unreachable!(),
+    };
+    emit_byte(state, opcode);
+}
+
+fn grouping(state: &mut CompilerState) {
+    expression(state);
+    state.consume(
+        Some(TokenKind::RightParen),
+        "Expected ')' after expression.",
+    );
+}
+
+fn number(state: &mut CompilerState) {
+    let lexeme = state
+        .previous()
+        .map(|token| token.lexeme.as_str())
+        .unwrap_or_default();
+    let value: Value = lexeme.parse().expect("Invalid number :(");
+    emit_constant(state, value);
+}
+
+fn unary(state: &mut CompilerState) {
+    let op_token_kind = state.previous().map(|token| token.kind);
+    state.parse_precedence(Precedence::Unary);
+    match op_token_kind {
+        Some(TokenKind::Minus) => emit_byte(state, OpCode::Negate),
+        _ => unreachable!(),
+    }
+}
+
+fn expression(state: &mut CompilerState) {
+    state.parse_precedence(Precedence::Assignment)
 }

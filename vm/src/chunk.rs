@@ -51,9 +51,9 @@ impl Chunk {
     }
 
     #[must_use = "Add the return value to this to a OpCode::Constant"]
-    pub fn add_constant(&mut self, constant: Value) -> u8 {
+    pub fn add_constant(&mut self, constant: Value) -> Result<u8, <usize as TryInto<u8>>::Error> {
         self.constants.push(constant);
-        (self.constants.len() - 1).try_into().unwrap()
+        (self.constants.len() - 1).try_into()
     }
 
     pub fn write_chunk(&mut self, chunk: OpCode, line: usize) {

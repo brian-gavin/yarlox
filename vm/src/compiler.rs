@@ -33,9 +33,9 @@ impl<'a> Parser<'a> {
         loop {
             self.current = self.scanner.next();
             match &self.current {
-                Some(token) if token.kind != TokenKind::Error => break,
+                Some(token) if token.kind() != TokenKind::Error => break,
                 Some(token) => {
-                    let msg = token.lexeme.clone();
+                    let msg = token.lexeme().to_string();
                     self.error_at_current(&msg);
                 }
                 None => break,
@@ -60,11 +60,11 @@ impl<'a> Parser<'a> {
             "[{}] Error",
             token
                 .as_ref()
-                .map(|token| token.line.to_string())
+                .map(|token| token.line().to_string())
                 .unwrap_or_else(|| "EOF".to_string())
         );
         match token {
-            Some(token) if token.kind != TokenKind::Error => eprint!(" at {}", token.lexeme),
+            Some(token) if token.kind() != TokenKind::Error => eprint!(" at {}", token.lexeme()),
             _ => (),
         }
         eprintln!(": {}", msg);
@@ -119,15 +119,15 @@ impl<'a> CompilerState<'a> {
     pub fn parse_precedence(&mut self, precedence: Precedence) {
         self.parser.advance();
         let previous = self.previous();
-        let prefix_rule = ParseRule::get_rule(previous.map(|token| token.kind)).prefix;
+        let prefix_rule = ParseRule::get_rule(previous.map(Token::kind)).prefix;
         match prefix_rule {
             Some(prefix_rule) => prefix_rule(self),
             None => self.parser.error("Expected expression."),
         }
 
-        while precedence <= ParseRule::get_rule(self.current().map(|token| token.kind)).precedence {
+        while precedence <= ParseRule::get_rule(self.current().map(Token::kind)).precedence {
             self.parser.advance();
-            let infix_rule = ParseRule::get_rule(self.previous().map(|token| token.kind))
+            let infix_rule = ParseRule::get_rule(self.previous().map(Token::kind))
                 .infix
                 .unwrap();
             infix_rule(self);
@@ -148,7 +148,7 @@ impl<'a> CompilerState<'a> {
     }
 
     pub fn consume(&mut self, kind: Option<TokenKind>, msg: &str) {
-        if self.current().map(|token| token.kind) == kind {
+        if self.current().map(Token::kind) == kind {
             self.parser.advance();
         } else {
             self.parser.error_at_current(msg);
@@ -219,7 +219,7 @@ impl ParseRule {
 }
 
 fn emit_byte(state: &mut CompilerState, byte: OpCode) {
-    let line = state.previous().map(|token| token.line).unwrap_or_default();
+    let line = state.previous().map(Token::line).unwrap_or_default();
     let current_chunk = state.current_chunk_mut();
     current_chunk.write_chunk(byte, line);
 }
@@ -238,7 +238,7 @@ fn end_compiler(state: &mut CompilerState) {
 }
 
 fn binary(state: &mut CompilerState) {
-    let op_token_kind = state.previous().map(|token| token.kind);
+    let op_token_kind = state.previous().map(Token::kind);
 
     // uncomment these when done :)
     let rule = ParseRule::get_rule(op_token_kind);
@@ -262,16 +262,13 @@ fn grouping(state: &mut CompilerState) {
 }
 
 fn number(state: &mut CompilerState) {
-    let lexeme = state
-        .previous()
-        .map(|token| token.lexeme.as_str())
-        .unwrap_or_default();
+    let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
     let value: Value = lexeme.parse().expect("Invalid number :(");
     emit_constant(state, value);
 }
 
 fn unary(state: &mut CompilerState) {
-    let op_token_kind = state.previous().map(|token| token.kind);
+    let op_token_kind = state.previous().map(Token::kind);
     state.parse_precedence(Precedence::Unary);
     match op_token_kind {
         Some(TokenKind::Minus) => emit_byte(state, OpCode::Negate),

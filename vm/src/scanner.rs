@@ -3,9 +3,23 @@ use std::str::Chars;
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    pub kind: TokenKind,
-    pub lexeme: String,
-    pub line: usize,
+    kind: TokenKind,
+    lexeme: String,
+    line: usize,
+}
+
+impl Token {
+    pub fn kind(&self) -> TokenKind {
+        self.kind
+    }
+
+    pub fn lexeme(&self) -> &str {
+        self.lexeme.as_str()
+    }
+
+    pub fn line(&self) -> usize {
+        self.line
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]

@@ -61,7 +61,7 @@ impl Vm {
             match op {
                 Constant(idx) => {
                     let constant = self.chunk.get_constant(*idx as _);
-                    self.stack.push(*constant);
+                    self.stack.push(constant.clone());
                 }
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),

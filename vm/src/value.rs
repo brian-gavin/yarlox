@@ -1,10 +1,14 @@
+use crate::object::Object;
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),
     Boolean(bool),
     Nil,
+    Object(Object),
 }
 
 impl Value {
@@ -23,6 +27,7 @@ impl fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Nil => write!(f, "nil"),
+            Value::Object(o) => write!(f, "{}", o),
         }
     }
 }

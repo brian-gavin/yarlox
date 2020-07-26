@@ -8,6 +8,7 @@ extern crate itertools;
 
 pub mod chunk;
 mod compiler;
+mod object;
 mod scanner;
 pub mod value;
 pub mod vm;

@@ -1,10 +1,12 @@
+use crate::object::Object;
 use std::fmt;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),
     Boolean(bool),
     Nil,
+    Object(Object),
 }
 
 impl Value {
@@ -23,6 +25,7 @@ impl fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::Nil => write!(f, "nil"),
+            Value::Object(o) => write!(f, "{}", o),
         }
     }
 }
@@ -33,6 +36,7 @@ impl PartialEq for Value {
             (Value::Number(n1), Value::Number(n2)) => n1 == n2,
             (Value::Boolean(b1), Value::Boolean(b2)) => b1 == b2,
             (Value::Nil, Value::Nil) => true,
+            (Value::Object(Object::String(s1)), Value::Object(Object::String(s2))) => s1 == s2,
             _ => false,
         }
     }

@@ -1,3 +1,4 @@
+use crate::object::Object;
 use crate::{
     chunk::{Chunk, OpCode},
     scanner::{Scanner, Token, TokenKind},
@@ -123,15 +124,15 @@ impl<'a> CompilerState<'a> {
     pub fn parse_precedence(&mut self, precedence: Precedence) {
         self.parser.advance();
         let previous = self.previous();
-        let prefix_rule = ParseRule::get_rule(previous.map(Token::kind)).prefix;
+        let prefix_rule = ParseRule::get_rule_opt(previous.map(Token::kind)).prefix;
         match prefix_rule {
             Some(prefix_rule) => prefix_rule(self),
             None => self.parser.error("Expected expression."),
         }
 
-        while precedence <= ParseRule::get_rule(self.current().map(Token::kind)).precedence {
+        while precedence <= ParseRule::get_rule_opt(self.current().map(Token::kind)).precedence {
             self.parser.advance();
-            let infix_rule = ParseRule::get_rule(self.previous().map(Token::kind))
+            let infix_rule = ParseRule::get_rule_opt(self.previous().map(Token::kind))
                 .infix
                 .unwrap();
             infix_rule(self);
@@ -210,21 +211,33 @@ struct ParseRule {
 }
 
 impl ParseRule {
-    fn get_rule(kind: Option<TokenKind>) -> ParseRule {
+    fn get_rule_opt(kind: Option<TokenKind>) -> ParseRule {
+        match kind {
+            Some(kind) => ParseRule::get_rule(kind),
+            None => ParseRule {
+                prefix: None,
+                infix: None,
+                precedence: Precedence::None,
+            },
+        }
+    }
+    fn get_rule(kind: TokenKind) -> ParseRule {
         use TokenKind::*;
-        let (prefix, infix, precedence): (Option<ParseFn>, Option<ParseFn>, Precedence) = match kind
-        {
-            Some(LeftParen) => (Some(grouping), None, Precedence::None),
-            Some(Minus) => (Some(unary), Some(binary), Precedence::Term),
-            Some(Plus) => (None, Some(binary), Precedence::Term),
-            Some(Slash) | Some(Star) => (None, Some(binary), Precedence::Factor),
-            Some(Bang) => (Some(unary), None, Precedence::None),
-            Some(BangEqual) | Some(EqualEqual) => (None, Some(binary), Precedence::Equality),
-            Some(Greater) | Some(GreaterEqual) | Some(Less) | Some(LessEqual) => {
+        type ParseRule3Tuple = (Option<ParseFn>, Option<ParseFn>, Precedence);
+
+        let (prefix, infix, precedence): ParseRule3Tuple = match kind {
+            LeftParen => (Some(grouping), None, Precedence::None),
+            Minus => (Some(unary), Some(binary), Precedence::Term),
+            Plus => (None, Some(binary), Precedence::Term),
+            Slash | Star => (None, Some(binary), Precedence::Factor),
+            Bang => (Some(unary), None, Precedence::None),
+            BangEqual | EqualEqual => (None, Some(binary), Precedence::Equality),
+            Greater | GreaterEqual | Less | LessEqual => {
                 (None, Some(binary), Precedence::Comparison)
             }
-            Some(False) | Some(True) | Some(Nil) => (Some(literal), None, Precedence::None),
-            Some(Number) => (Some(number), None, Precedence::None),
+            False | True | Nil => (Some(literal), None, Precedence::None),
+            Number => (Some(number), None, Precedence::None),
+            Str => (Some(string), None, Precedence::None),
             _ => (None, None, Precedence::None),
         };
         ParseRule {
@@ -261,22 +274,22 @@ fn binary(state: &mut CompilerState) {
     const EB: fn(&mut CompilerState, OpCode) = emit_byte;
     const EBS: fn(&mut CompilerState, &[OpCode]) = emit_bytes;
 
-    let op_token_kind = state.previous().map(Token::kind);
+    let op_token_kind = state.previous().map(Token::kind).unwrap();
 
     let rule = ParseRule::get_rule(op_token_kind);
     state.parse_precedence(rule.precedence.next_highest());
 
     match op_token_kind {
-        Some(BangEqual) => EBS(state, &[OpCode::Equal, OpCode::Not]),
-        Some(EqualEqual) => EB(state, OpCode::Equal),
-        Some(Greater) => EB(state, OpCode::Greater),
-        Some(GreaterEqual) => EBS(state, &[OpCode::Less, OpCode::Not]),
-        Some(Less) => EB(state, OpCode::Less),
-        Some(TokenKind::LessEqual) => EBS(state, &[OpCode::Greater, OpCode::Not]),
-        Some(Plus) => EB(state, OpCode::Add),
-        Some(Minus) => EB(state, OpCode::Subtract),
-        Some(Star) => EB(state, OpCode::Multiply),
-        Some(Slash) => EB(state, OpCode::Divide),
+        BangEqual => EBS(state, &[OpCode::Equal, OpCode::Not]),
+        EqualEqual => EB(state, OpCode::Equal),
+        Greater => EB(state, OpCode::Greater),
+        GreaterEqual => EBS(state, &[OpCode::Less, OpCode::Not]),
+        Less => EB(state, OpCode::Less),
+        LessEqual => EBS(state, &[OpCode::Greater, OpCode::Not]),
+        Plus => EB(state, OpCode::Add),
+        Minus => EB(state, OpCode::Subtract),
+        Star => EB(state, OpCode::Multiply),
+        Slash => EB(state, OpCode::Divide),
         _ => unreachable!(),
     };
 }
@@ -302,6 +315,12 @@ fn number(state: &mut CompilerState) {
     let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
     emit_constant(state, Value::Number(value));
+}
+
+fn string(state: &mut CompilerState) {
+    let s = state.previous().unwrap().lexeme().trim_matches('"');
+    let o = Object::String(s.to_string());
+    emit_constant(state, Value::Object(o));
 }
 
 fn unary(state: &mut CompilerState) {

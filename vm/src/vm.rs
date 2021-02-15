@@ -1,5 +1,6 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    object::Object,
     value::Value,
 };
 use std::{
@@ -31,7 +32,7 @@ impl Error for InterpretError {}
 
 pub type InterpretResult = Result<(), InterpretError>;
 
-macro_rules! binary_op {
+macro_rules! number_binary_op {
     ($vm:ident, $value_type:ident, $op:tt) => {{
         let b = $vm.stack.pop().expect("empty stack!");
         let a = $vm.stack.last_mut().expect("empty stack!");
@@ -61,7 +62,7 @@ impl Vm {
             match op {
                 Constant(idx) => {
                     let constant = self.chunk.get_constant(*idx as _);
-                    self.stack.push(*constant);
+                    self.stack.push(constant.clone());
                 }
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),
@@ -71,12 +72,28 @@ impl Vm {
                     let a = self.stack.last_mut().expect("empty stack!");
                     *a = Value::Boolean(*a == b);
                 }
-                Greater => binary_op!(self, Boolean, >),
-                Less => binary_op!(self, Boolean, <),
-                Add => binary_op!(self, Number, +),
-                Subtract => binary_op!(self, Number, -),
-                Multiply => binary_op!(self, Number, *),
-                Divide => binary_op!(self, Number, /),
+                Add => {
+                    let b = self.stack.pop().expect("empty stack!");
+                    let a = self.stack.last_mut().expect("empty stack!");
+                    match (a, b) {
+                        (Value::Object(Object::String(a)), Value::Object(Object::String(b))) => {
+                            *a = a.to_owned() + b.as_str();
+                        }
+                        (Value::Number(a), Value::Number(b)) => {
+                            *a += b;
+                        }
+                        _ => {
+                            return Err(
+                                self.runtime_error("Operands must be two numbers or two strings.")
+                            );
+                        }
+                    }
+                }
+                Greater => number_binary_op!(self, Boolean, >),
+                Less => number_binary_op!(self, Boolean, <),
+                Subtract => number_binary_op!(self, Number, -),
+                Multiply => number_binary_op!(self, Number, *),
+                Divide => number_binary_op!(self, Number, /),
                 Not => {
                     let b = self.stack.last_mut().expect("empty stack!");
                     *b = Value::Boolean(b.is_falsey());

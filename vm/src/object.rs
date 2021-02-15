@@ -8,7 +8,7 @@ pub enum Object {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Object::String(s) => write!(f, "\"{}\"", s)
+            Object::String(s) => write!(f, "\"{}\"", s),
         }
     }
 }

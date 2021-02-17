@@ -111,7 +111,7 @@ impl<'a> CompilerState<'a> {
 
     pub fn make_constant(&mut self, value: Value) -> u8 {
         let current_chunk = self.current_chunk_mut();
-        let constant = current_chunk.add_constant(value);
+        let constant = current_chunk.add_constant(Some(value));
         match constant {
             Ok(c) => c,
             Err(_) => {

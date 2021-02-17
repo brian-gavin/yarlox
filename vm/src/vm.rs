@@ -61,8 +61,9 @@ impl Vm {
             self.ip += 1;
             match op {
                 Constant(idx) => {
-                    let constant = self.chunk.get_constant(*idx as _);
-                    self.stack.push(constant.clone());
+                    let constant = self.chunk.get_mut_constant(idx as _);
+                    self.stack
+                        .push(constant.take().expect("took a constant that was taken"));
                 }
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),

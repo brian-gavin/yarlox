@@ -23,7 +23,8 @@ pub enum OpCode {
 #[derive(Debug)]
 pub struct Chunk {
     code: Vec<OpCode>,
-    constants: Vec<Value>,
+    // this is a Vec<Option> because later on, these will be take()'n by the vm
+    constants: Vec<Option<Value>>,
     lines: HashMap<usize, usize>,
 }
 
@@ -58,7 +59,10 @@ impl Chunk {
     }
 
     #[must_use = "Add the return value to this to a OpCode::Constant"]
-    pub fn add_constant(&mut self, constant: Value) -> Result<u8, <usize as TryInto<u8>>::Error> {
+    pub fn add_constant(
+        &mut self,
+        constant: Option<Value>,
+    ) -> Result<u8, <usize as TryInto<u8>>::Error> {
         self.constants.push(constant);
         (self.constants.len() - 1).try_into()
     }
@@ -68,12 +72,12 @@ impl Chunk {
         self.lines.insert(self.code.len() - 1, line);
     }
 
-    pub fn fetch(&self, ip: usize) -> &OpCode {
-        self.code.get(ip).expect("Out of bounds IP")
+    pub fn fetch(&self, ip: usize) -> OpCode {
+        *self.code.get(ip).expect("Out of bounds IP")
     }
 
-    pub fn get_constant(&self, idx: usize) -> &Value {
-        self.constants.get(idx).expect("Out of bound constant")
+    pub fn get_mut_constant(&mut self, idx: usize) -> &mut Option<Value> {
+        self.constants.get_mut(idx).expect("Out of bound constant")
     }
 
     pub fn lines(&self) -> &HashMap<usize, usize> {

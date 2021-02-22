@@ -170,6 +170,27 @@ impl<'a> CompilerState<'a> {
             self.parser.error_at_current(msg);
         }
     }
+
+    pub fn synchronize(&mut self) {
+        self.parser.panic_mode = false;
+        while self.current().is_some() {
+            if TokenKind::Semicolon == self.previous().unwrap().kind() {
+                return;
+            }
+            match self.current().unwrap().kind() {
+                TokenKind::Class
+                | TokenKind::Fun
+                | TokenKind::Var
+                | TokenKind::For
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::Print
+                | TokenKind::Return => return,
+                _ => (),
+            }
+            self.parser.advance();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
@@ -349,6 +370,10 @@ fn expression_statement(state: &mut CompilerState) {
 fn declaration(state: &mut CompilerState) {
     debug!("decl: current: {:?}", state.current());
     statement(state);
+
+    if state.parser.panic_mode {
+        state.synchronize();
+    }
 }
 
 fn statement(state: &mut CompilerState) {

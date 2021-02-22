@@ -68,6 +68,9 @@ impl Vm {
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),
                 False => self.stack.push(Value::Boolean(false)),
+                Pop => {
+                    let _ = self.stack.pop().expect("empty stack!");
+                }
                 Equal => {
                     let b = self.stack.pop().expect("empty stack!");
                     let a = self.stack.last_mut().expect("empty stack!");

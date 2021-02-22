@@ -340,6 +340,12 @@ fn expression(state: &mut CompilerState) {
     state.parse_precedence(Precedence::Assignment)
 }
 
+fn expression_statement(state: &mut CompilerState) {
+    expression(state);
+    state.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
+    emit_byte(state, OpCode::Pop)
+}
+
 fn declaration(state: &mut CompilerState) {
     debug!("decl: current: {:?}", state.current());
     statement(state);
@@ -352,7 +358,10 @@ fn statement(state: &mut CompilerState) {
             state.parser.advance();
             print_statement(state);
         }
-        _ => (),
+        Some(_) => {
+            expression_statement(state);
+        }
+        None => (),
     }
 }
 

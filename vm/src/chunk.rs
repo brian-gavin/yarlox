@@ -1,6 +1,9 @@
 use crate::value::Value;
 use std::{collections::HashMap, convert::TryInto, fmt};
 
+/// OpCode. For type safety reasons, a difference between this and the book is that all Bytes
+/// are encoded within the operation that is multi byte like Constant and DefineGlobal.
+/// In the book, these are two byte: OP_CONSTANT <byte> but in this, it's just Constant(<byte>).
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum OpCode {
@@ -9,6 +12,7 @@ pub enum OpCode {
     True,
     False,
     Pop,
+    DefineGlobal(u8),
     Equal,
     Greater,
     Less,

@@ -139,6 +139,20 @@ impl<'a> CompilerState<'a> {
         }
     }
 
+    pub fn identifier_constant(&mut self, name: String) -> u8 {
+        self.make_constant(Value::Object(Object::String(name)))
+    }
+
+    pub fn parse_variable(&mut self, err_msg: &str) -> u8 {
+        self.consume(Some(TokenKind::Identifier), err_msg);
+        let name = self.previous().unwrap().lexeme().to_owned();
+        self.identifier_constant(name)
+    }
+
+    pub fn define_variable(&mut self, global: u8) {
+        emit_byte(self, OpCode::DefineGlobal(global));
+    }
+
     pub fn compile(mut self) -> Result<Chunk, ()> {
         self.parser.advance();
 
@@ -361,6 +375,22 @@ fn expression(state: &mut CompilerState) {
     state.parse_precedence(Precedence::Assignment)
 }
 
+fn var_declaration(state: &mut CompilerState) {
+    let global = state.parse_variable("Expect variable name.");
+    match state.current().unwrap().kind() {
+        TokenKind::Equal => {
+            state.parser.advance();
+            expression(state);
+        }
+        _ => emit_byte(state, OpCode::Nil),
+    }
+    state.consume(
+        Some(TokenKind::Semicolon),
+        "Expect ';' after variable declaration.",
+    );
+    state.define_variable(global);
+}
+
 fn expression_statement(state: &mut CompilerState) {
     expression(state);
     state.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
@@ -368,8 +398,13 @@ fn expression_statement(state: &mut CompilerState) {
 }
 
 fn declaration(state: &mut CompilerState) {
-    debug!("decl: current: {:?}", state.current());
-    statement(state);
+    match state.current().unwrap().kind() {
+        TokenKind::Var => {
+            state.parser.advance();
+            var_declaration(state);
+        }
+        _ => statement(state),
+    }
 
     if state.parser.panic_mode {
         state.synchronize();

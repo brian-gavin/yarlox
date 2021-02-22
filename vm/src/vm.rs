@@ -4,6 +4,7 @@ use crate::{
     value::Value,
 };
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{self, Display},
 };
@@ -11,6 +12,7 @@ pub struct Vm {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 
 #[derive(Debug)]
@@ -49,6 +51,7 @@ impl Vm {
             chunk,
             ip: 0,
             stack: Vec::new(),
+            globals: HashMap::new(),
         }
     }
 
@@ -70,6 +73,22 @@ impl Vm {
                 False => self.stack.push(Value::Boolean(false)),
                 Pop => {
                     let _ = self.stack.pop().expect("empty stack!");
+                }
+                DefineGlobal(idx) => {
+                    let name = self
+                        .chunk
+                        .get_mut_constant(idx as _)
+                        .take()
+                        .expect("None variable name");
+                    if let Value::Object(Object::String(name)) = name {
+                        // in the book, this first peeks to insert then pops after.
+                        // we cannot really do that, so we just pop it off now.
+                        // hopefully this won't cause a headache later.
+                        let val = self.stack.pop().expect("empty stack!");
+                        self.globals.insert(name, val);
+                    } else {
+                        unreachable!()
+                    }
                 }
                 Equal => {
                     let b = self.stack.pop().expect("empty stack!");

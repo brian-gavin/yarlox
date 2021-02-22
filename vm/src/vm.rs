@@ -106,8 +106,11 @@ impl Vm {
                         _ => return Err(self.runtime_error("Operand must be a number.")),
                     }
                 }
-                Return => {
+                Print => {
                     println!("{}", self.stack.pop().expect("empty stack!"));
+                }
+                Return => {
+                    // Exit interpreter
                     return Ok(());
                 }
             }

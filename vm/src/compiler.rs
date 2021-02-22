@@ -141,8 +141,11 @@ impl<'a> CompilerState<'a> {
 
     pub fn compile(mut self) -> Result<Chunk, ()> {
         self.parser.advance();
-        expression(&mut self);
-        self.consume(None, "Expected end of expression.");
+
+        while self.current().is_some() {
+            declaration(&mut self);
+        }
+
         self.end_compiler();
 
         if self.parser.had_error {
@@ -335,4 +338,26 @@ fn unary(state: &mut CompilerState) {
 
 fn expression(state: &mut CompilerState) {
     state.parse_precedence(Precedence::Assignment)
+}
+
+fn declaration(state: &mut CompilerState) {
+    debug!("decl: current: {:?}", state.current());
+    statement(state);
+}
+
+fn statement(state: &mut CompilerState) {
+    debug!("statement: {:?}", state.current());
+    match state.current().map(Token::kind) {
+        Some(TokenKind::Print) => {
+            state.parser.advance();
+            print_statement(state);
+        }
+        _ => (),
+    }
+}
+
+fn print_statement(state: &mut CompilerState) {
+    expression(state);
+    state.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
+    emit_byte(state, OpCode::Print);
 }

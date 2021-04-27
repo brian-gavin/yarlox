@@ -9,6 +9,7 @@ use std::{
     fmt::{self, Display},
 };
 pub struct Vm {
+    chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
@@ -34,12 +35,12 @@ impl Error for InterpretError {}
 pub type InterpretResult = Result<(), InterpretError>;
 
 macro_rules! number_binary_op {
-    ($vm:ident, $chunk:ident, $value_type:ident, $op:tt) => {{
+    ($vm:ident, $value_type:ident, $op:tt) => {{
         let b = $vm.stack.pop().expect("empty stack!");
         let a = $vm.stack.last_mut().expect("empty stack!");
         *a = match (&a, b) {
             (Value::Number(a), Value::Number(b)) => Value::$value_type(*a $op b),
-            _ => return Err($vm.runtime_error($chunk, "Operand must be a number.")),
+            _ => return Err($vm.runtime_error("Operand must be a number.")),
         };
     }};
 }
@@ -47,23 +48,29 @@ macro_rules! number_binary_op {
 impl Vm {
     pub fn new() -> Vm {
         Vm {
+            chunk: Chunk::new(),
             ip: 0,
             stack: Vec::new(),
             globals: HashMap::new(),
         }
     }
 
-    pub fn interpret(&mut self, mut chunk: Chunk) -> InterpretResult {
-        use OpCode::*;
+    pub fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
+        self.chunk = chunk;
         self.ip = 0;
+        self.run()
+    }
+
+    fn run(&mut self) -> InterpretResult {
+        use OpCode::*;
         loop {
-            let op = chunk.fetch(self.ip);
+            let op = self.chunk.fetch(self.ip);
             debug!("stack: {:?}", self.stack);
             debug!("op: {:?}", op);
             self.ip += 1;
             match op {
                 Constant(idx) => {
-                    let constant = chunk.get_mut_constant(idx as _);
+                    let constant = self.chunk.get_mut_constant(idx as _);
                     self.stack
                         .push(constant.take().expect("took a constant that was taken"));
                 }
@@ -74,9 +81,9 @@ impl Vm {
                     let _ = self.stack.pop().expect("empty stack!");
                 }
                 GetGlobal(idx) => {
-                    debug!("globals: {:?}", self.globals);
                     // OpCode's byte refers to name in the chunk
-                    let name = chunk
+                    let name = self
+                        .chunk
                         .get_mut_constant(idx as _)
                         .take()
                         .expect("None variable name");
@@ -98,11 +105,11 @@ impl Vm {
                     self.stack.push(global_var.clone())
                 }
                 DefineGlobal(idx) => {
-                    let name = chunk
+                    let name = self
+                        .chunk
                         .get_mut_constant(idx as _)
                         .take()
                         .expect("None variable name");
-                    debug!("DefineGlobal: {:?}", name);
                     if let Value::Object(Object::String(name)) = name {
                         // in the book, this first peeks to insert then pops after.
                         // we cannot really do that, so we just pop it off now.
@@ -130,18 +137,17 @@ impl Vm {
                             *a += b;
                         }
                         _ => {
-                            return Err(self.runtime_error(
-                                chunk,
-                                "Operands must be two numbers or two strings.",
-                            ));
+                            return Err(
+                                self.runtime_error("Operands must be two numbers or two strings.")
+                            );
                         }
                     }
                 }
-                Greater => number_binary_op!(self, chunk, Boolean, >),
-                Less => number_binary_op!(self, chunk, Boolean, <),
-                Subtract => number_binary_op!(self, chunk, Number, -),
-                Multiply => number_binary_op!(self, chunk, Number, *),
-                Divide => number_binary_op!(self, chunk, Number, /),
+                Greater => number_binary_op!(self, Boolean, >),
+                Less => number_binary_op!(self, Boolean, <),
+                Subtract => number_binary_op!(self, Number, -),
+                Multiply => number_binary_op!(self, Number, *),
+                Divide => number_binary_op!(self, Number, /),
                 Not => {
                     let b = self.stack.last_mut().expect("empty stack!");
                     *b = Value::Boolean(b.is_falsey());
@@ -150,7 +156,7 @@ impl Vm {
                     let v = self.stack.last_mut().expect("empty stack!");
                     *v = match &v {
                         Value::Number(n) => Value::Number(-n),
-                        _ => return Err(self.runtime_error(chunk, "Operand must be a number.")),
+                        _ => return Err(self.runtime_error("Operand must be a number.")),
                     }
                 }
                 Print => {
@@ -164,8 +170,8 @@ impl Vm {
         }
     }
 
-    fn runtime_error(&self, chunk: Chunk, msg: &str) -> InterpretError {
-        let line = chunk.lines().get(&(self.ip - 1)).unwrap();
+    fn runtime_error(&self, msg: &str) -> InterpretError {
+        let line = self.chunk.lines().get(&(self.ip - 1)).unwrap();
         InterpretError::Runtime(format!("{}\n[line {}] in script", msg, line))
     }
 }

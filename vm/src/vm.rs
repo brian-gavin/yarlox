@@ -61,6 +61,19 @@ impl Vm {
         self.run()
     }
 
+    fn read_string(&mut self, idx: usize) -> String {
+        let s = self
+            .chunk
+            .get_mut_constant(idx as _)
+            .take()
+            .expect(&format!("vm::ReadString: None at idx {}", idx));
+        if let Value::Object(Object::String(s)) = s {
+            s
+        } else {
+            panic!("vm::ReadString: Value at idx {} was not a string", idx)
+        }
+    }
+
     fn run(&mut self) -> InterpretResult {
         use OpCode::*;
         loop {
@@ -81,44 +94,43 @@ impl Vm {
                     let _ = self.stack.pop().expect("empty stack!");
                 }
                 GetGlobal(idx) => {
-                    // OpCode's byte refers to name in the chunk
-                    let name = self
-                        .chunk
-                        .get_mut_constant(idx as _)
-                        .take()
-                        .expect("None variable name");
-                    // do the lookup, return Runtime Error if not found
-                    let global_var = if let Value::Object(Object::String(name)) = name {
-                        let v = self.globals.get(&name);
-                        if v.is_none() {
+                    let name = self.read_string(idx as _);
+                    match self.globals.get(&name) {
+                        Some(global_var) => {
+                            // cloning is OK - for basic values, they are already cheaply clonable
+                            // for later objects, they will probably be a Rc clone, or some other GC thing.
+                            self.stack.push(global_var.clone())
+                        }
+                        None => {
                             return Err(InterpretError::Runtime(format!(
                                 "Undefined variable '{}'.",
                                 name
                             )));
                         }
-                        v.unwrap()
-                    } else {
-                        unreachable!()
-                    };
-                    // cloning is OK - for basic values, they are already cheaply clonable
-                    // for later objects, they will probably be a Rc clone, or some other GC thing.
-                    self.stack.push(global_var.clone())
+                    }
                 }
                 DefineGlobal(idx) => {
-                    let name = self
-                        .chunk
-                        .get_mut_constant(idx as _)
-                        .take()
-                        .expect("None variable name");
-                    if let Value::Object(Object::String(name)) = name {
-                        // in the book, this first peeks to insert then pops after.
-                        // we cannot really do that, so we just pop it off now.
-                        // hopefully this won't cause a headache later.
-                        let val = self.stack.pop().expect("empty stack!");
-                        self.globals.insert(name, val);
-                        debug!("DefineGlobal::globals: {:?}", self.globals);
-                    } else {
-                        unreachable!()
+                    let name = self.read_string(idx as _);
+                    // in the book, this first peeks to insert then pops after.
+                    // we cannot really do that, so we just pop it off now.
+                    // hopefully this won't cause a headache later.
+                    let val = self.stack.pop().expect("empty stack!");
+                    self.globals.insert(name, val);
+                    debug!("DefineGlobal::globals: {:?}", self.globals);
+                }
+                SetGlobal(idx) => {
+                    let name = self.read_string(idx as _);
+                    // Set is an expression and must leave a value on the stack, so do not pop.
+                    let v = self.stack.last().expect("empty stack!").clone();
+                    match self.globals.insert(name.clone(), v) {
+                        None => {
+                            self.globals.remove(&name);
+                            return Err(InterpretError::Runtime(format!(
+                                "Undefined variable '{}'.",
+                                name,
+                            )));
+                        }
+                        Some(_) => {}
                     }
                 }
                 Equal => {

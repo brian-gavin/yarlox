@@ -14,6 +14,7 @@ pub enum OpCode {
     Pop,
     GetGlobal(u8),
     DefineGlobal(u8),
+    SetGlobal(u8),
     Equal,
     Greater,
     Less,

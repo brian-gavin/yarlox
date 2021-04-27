@@ -125,8 +125,11 @@ impl<'a> CompilerState<'a> {
         self.parser.advance();
         let previous = self.previous();
         let prefix_rule = ParseRule::get_rule_opt(previous.map(Token::kind)).prefix;
+        let can_assign = precedence <= Precedence::Assignment;
         match prefix_rule {
-            Some(prefix_rule) => prefix_rule(self),
+            Some(prefix_rule) => {
+                prefix_rule(self, can_assign);
+            }
             None => self.parser.error("Expected expression."),
         }
 
@@ -135,7 +138,12 @@ impl<'a> CompilerState<'a> {
             let infix_rule = ParseRule::get_rule_opt(self.previous().map(Token::kind))
                 .infix
                 .unwrap();
-            infix_rule(self);
+            infix_rule(self, can_assign);
+        }
+
+        if can_assign && self.current().map(Token::kind) == Some(TokenKind::Equal) {
+            self.parser.advance();
+            self.parser.error("Invalid assignment target.");
         }
     }
 
@@ -240,7 +248,7 @@ impl Precedence {
     }
 }
 
-type ParseFn = fn(&mut CompilerState);
+type ParseFn = fn(&mut CompilerState, bool);
 
 struct ParseRule {
     prefix: Option<ParseFn>,
@@ -310,7 +318,7 @@ fn emit_constant(state: &mut CompilerState, value: Value) {
     emit_byte(state, constant);
 }
 
-fn binary(state: &mut CompilerState) {
+fn binary(state: &mut CompilerState, _can_assign: bool) {
     use TokenKind::*;
     const EB: fn(&mut CompilerState, OpCode) = emit_byte;
     const EBS: fn(&mut CompilerState, &[OpCode]) = emit_bytes;
@@ -335,7 +343,7 @@ fn binary(state: &mut CompilerState) {
     };
 }
 
-fn literal(state: &mut CompilerState) {
+fn literal(state: &mut CompilerState, _can_assign: bool) {
     match state.previous().map(Token::kind) {
         Some(TokenKind::False) => emit_byte(state, OpCode::False),
         Some(TokenKind::Nil) => emit_byte(state, OpCode::Nil),
@@ -344,7 +352,7 @@ fn literal(state: &mut CompilerState) {
     }
 }
 
-fn grouping(state: &mut CompilerState) {
+fn grouping(state: &mut CompilerState, _can_assign: bool) {
     expression(state);
     state.consume(
         Some(TokenKind::RightParen),
@@ -352,34 +360,41 @@ fn grouping(state: &mut CompilerState) {
     );
 }
 
-fn number(state: &mut CompilerState) {
+fn number(state: &mut CompilerState, _can_assign: bool) {
     let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
     emit_constant(state, Value::Number(value));
 }
 
-fn string(state: &mut CompilerState) {
+fn string(state: &mut CompilerState, _can_assign: bool) {
     let s = state.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
     emit_constant(state, Value::Object(o));
 }
 
-fn named_variable(state: &mut CompilerState, name: String) {
+fn named_variable(state: &mut CompilerState, name: String, can_assign: bool) {
     let arg = state.identifier_constant(name);
-    emit_byte(state, OpCode::GetGlobal(arg));
+    match (can_assign, state.current().map(Token::kind)) {
+        (true, Some(TokenKind::Equal)) => {
+            state.parser.advance();
+            expression(state);
+            emit_byte(state, OpCode::SetGlobal(arg));
+        }
+        _ => emit_byte(state, OpCode::GetGlobal(arg)),
+    }
 }
 
-fn variable(state: &mut CompilerState) {
+fn variable(state: &mut CompilerState, can_assign: bool) {
     // altertaion from book: Token by ref not possible here, clone the lexeme name
     let name = state
         .previous()
         .map(Token::lexeme)
         .map(String::from)
         .unwrap_or_default();
-    named_variable(state, name);
+    named_variable(state, name, can_assign);
 }
 
-fn unary(state: &mut CompilerState) {
+fn unary(state: &mut CompilerState, _can_assign: bool) {
     let op_token_kind = state.previous().map(Token::kind);
     state.parse_precedence(Precedence::Unary);
     match op_token_kind {

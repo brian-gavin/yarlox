@@ -259,6 +259,7 @@ impl ParseRule {
             },
         }
     }
+
     fn get_rule(kind: TokenKind) -> ParseRule {
         use TokenKind::*;
         type ParseRule3Tuple = (Option<ParseFn>, Option<ParseFn>, Precedence);
@@ -276,8 +277,10 @@ impl ParseRule {
             False | True | Nil => (Some(literal), None, Precedence::None),
             Number => (Some(number), None, Precedence::None),
             Str => (Some(string), None, Precedence::None),
+            Identifier => (Some(variable), None, Precedence::None),
             _ => (None, None, Precedence::None),
         };
+
         ParseRule {
             prefix,
             infix,
@@ -359,6 +362,21 @@ fn string(state: &mut CompilerState) {
     let s = state.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
     emit_constant(state, Value::Object(o));
+}
+
+fn named_variable(state: &mut CompilerState, name: String) {
+    let arg = state.identifier_constant(name);
+    emit_byte(state, OpCode::GetGlobal(arg));
+}
+
+fn variable(state: &mut CompilerState) {
+    // altertaion from book: Token by ref not possible here, clone the lexeme name
+    let name = state
+        .previous()
+        .map(Token::lexeme)
+        .map(String::from)
+        .unwrap_or_default();
+    named_variable(state, name);
 }
 
 fn unary(state: &mut CompilerState) {

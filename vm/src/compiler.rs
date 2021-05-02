@@ -125,8 +125,11 @@ impl<'a> CompilerState<'a> {
         self.parser.advance();
         let previous = self.previous();
         let prefix_rule = ParseRule::get_rule_opt(previous.map(Token::kind)).prefix;
+        let can_assign = precedence <= Precedence::Assignment;
         match prefix_rule {
-            Some(prefix_rule) => prefix_rule(self),
+            Some(prefix_rule) => {
+                prefix_rule(self, can_assign);
+            }
             None => self.parser.error("Expected expression."),
         }
 
@@ -135,14 +138,36 @@ impl<'a> CompilerState<'a> {
             let infix_rule = ParseRule::get_rule_opt(self.previous().map(Token::kind))
                 .infix
                 .unwrap();
-            infix_rule(self);
+            infix_rule(self, can_assign);
         }
+
+        if can_assign && self.current().map(Token::kind) == Some(TokenKind::Equal) {
+            self.parser.advance();
+            self.parser.error("Invalid assignment target.");
+        }
+    }
+
+    pub fn identifier_constant(&mut self, name: String) -> u8 {
+        self.make_constant(Value::Object(Object::String(name)))
+    }
+
+    pub fn parse_variable(&mut self, err_msg: &str) -> u8 {
+        self.consume(Some(TokenKind::Identifier), err_msg);
+        let name = self.previous().unwrap().lexeme().to_owned();
+        self.identifier_constant(name)
+    }
+
+    pub fn define_variable(&mut self, global: u8) {
+        emit_byte(self, OpCode::DefineGlobal(global));
     }
 
     pub fn compile(mut self) -> Result<Chunk, ()> {
         self.parser.advance();
-        expression(&mut self);
-        self.consume(None, "Expected end of expression.");
+
+        while self.current().is_some() {
+            declaration(&mut self);
+        }
+
         self.end_compiler();
 
         if self.parser.had_error {
@@ -165,6 +190,27 @@ impl<'a> CompilerState<'a> {
             self.parser.advance();
         } else {
             self.parser.error_at_current(msg);
+        }
+    }
+
+    pub fn synchronize(&mut self) {
+        self.parser.panic_mode = false;
+        while self.current().is_some() {
+            if TokenKind::Semicolon == self.previous().unwrap().kind() {
+                return;
+            }
+            match self.current().unwrap().kind() {
+                TokenKind::Class
+                | TokenKind::Fun
+                | TokenKind::Var
+                | TokenKind::For
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::Print
+                | TokenKind::Return => return,
+                _ => (),
+            }
+            self.parser.advance();
         }
     }
 }
@@ -202,7 +248,7 @@ impl Precedence {
     }
 }
 
-type ParseFn = fn(&mut CompilerState);
+type ParseFn = fn(&mut CompilerState, bool);
 
 struct ParseRule {
     prefix: Option<ParseFn>,
@@ -221,6 +267,7 @@ impl ParseRule {
             },
         }
     }
+
     fn get_rule(kind: TokenKind) -> ParseRule {
         use TokenKind::*;
         type ParseRule3Tuple = (Option<ParseFn>, Option<ParseFn>, Precedence);
@@ -238,8 +285,10 @@ impl ParseRule {
             False | True | Nil => (Some(literal), None, Precedence::None),
             Number => (Some(number), None, Precedence::None),
             Str => (Some(string), None, Precedence::None),
+            Identifier => (Some(variable), None, Precedence::None),
             _ => (None, None, Precedence::None),
         };
+
         ParseRule {
             prefix,
             infix,
@@ -269,7 +318,7 @@ fn emit_constant(state: &mut CompilerState, value: Value) {
     emit_byte(state, constant);
 }
 
-fn binary(state: &mut CompilerState) {
+fn binary(state: &mut CompilerState, _can_assign: bool) {
     use TokenKind::*;
     const EB: fn(&mut CompilerState, OpCode) = emit_byte;
     const EBS: fn(&mut CompilerState, &[OpCode]) = emit_bytes;
@@ -294,7 +343,7 @@ fn binary(state: &mut CompilerState) {
     };
 }
 
-fn literal(state: &mut CompilerState) {
+fn literal(state: &mut CompilerState, _can_assign: bool) {
     match state.previous().map(Token::kind) {
         Some(TokenKind::False) => emit_byte(state, OpCode::False),
         Some(TokenKind::Nil) => emit_byte(state, OpCode::Nil),
@@ -303,7 +352,7 @@ fn literal(state: &mut CompilerState) {
     }
 }
 
-fn grouping(state: &mut CompilerState) {
+fn grouping(state: &mut CompilerState, _can_assign: bool) {
     expression(state);
     state.consume(
         Some(TokenKind::RightParen),
@@ -311,19 +360,41 @@ fn grouping(state: &mut CompilerState) {
     );
 }
 
-fn number(state: &mut CompilerState) {
+fn number(state: &mut CompilerState, _can_assign: bool) {
     let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
     emit_constant(state, Value::Number(value));
 }
 
-fn string(state: &mut CompilerState) {
+fn string(state: &mut CompilerState, _can_assign: bool) {
     let s = state.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
     emit_constant(state, Value::Object(o));
 }
 
-fn unary(state: &mut CompilerState) {
+fn named_variable(state: &mut CompilerState, name: String, can_assign: bool) {
+    let arg = state.identifier_constant(name);
+    match (can_assign, state.current().map(Token::kind)) {
+        (true, Some(TokenKind::Equal)) => {
+            state.parser.advance();
+            expression(state);
+            emit_byte(state, OpCode::SetGlobal(arg));
+        }
+        _ => emit_byte(state, OpCode::GetGlobal(arg)),
+    }
+}
+
+fn variable(state: &mut CompilerState, can_assign: bool) {
+    // altertaion from book: Token by ref not possible here, clone the lexeme name
+    let name = state
+        .previous()
+        .map(Token::lexeme)
+        .map(String::from)
+        .unwrap_or_default();
+    named_variable(state, name, can_assign);
+}
+
+fn unary(state: &mut CompilerState, _can_assign: bool) {
     let op_token_kind = state.previous().map(Token::kind);
     state.parse_precedence(Precedence::Unary);
     match op_token_kind {
@@ -335,4 +406,60 @@ fn unary(state: &mut CompilerState) {
 
 fn expression(state: &mut CompilerState) {
     state.parse_precedence(Precedence::Assignment)
+}
+
+fn var_declaration(state: &mut CompilerState) {
+    let global = state.parse_variable("Expect variable name.");
+    match state.current().unwrap().kind() {
+        TokenKind::Equal => {
+            state.parser.advance();
+            expression(state);
+        }
+        _ => emit_byte(state, OpCode::Nil),
+    }
+    state.consume(
+        Some(TokenKind::Semicolon),
+        "Expect ';' after variable declaration.",
+    );
+    state.define_variable(global);
+}
+
+fn expression_statement(state: &mut CompilerState) {
+    expression(state);
+    state.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
+    emit_byte(state, OpCode::Pop)
+}
+
+fn declaration(state: &mut CompilerState) {
+    match state.current().unwrap().kind() {
+        TokenKind::Var => {
+            state.parser.advance();
+            var_declaration(state);
+        }
+        _ => statement(state),
+    }
+
+    if state.parser.panic_mode {
+        state.synchronize();
+    }
+}
+
+fn statement(state: &mut CompilerState) {
+    debug!("statement: {:?}", state.current());
+    match state.current().map(Token::kind) {
+        Some(TokenKind::Print) => {
+            state.parser.advance();
+            print_statement(state);
+        }
+        Some(_) => {
+            expression_statement(state);
+        }
+        None => (),
+    }
+}
+
+fn print_statement(state: &mut CompilerState) {
+    expression(state);
+    state.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
+    emit_byte(state, OpCode::Print);
 }

@@ -15,6 +15,7 @@ pub mod vm;
 
 pub fn repl() -> Result<(), Box<dyn Error>> {
     let mut line = String::new();
+    let mut vm = Vm::new();
     loop {
         line.clear();
         print!("\nlox> ");
@@ -24,7 +25,7 @@ pub fn repl() -> Result<(), Box<dyn Error>> {
         if n == 0 {
             break;
         }
-        if let Err(e) = interpret(&line) {
+        if let Err(e) = interpret(&mut vm, &line) {
             eprintln!("{}", e);
         }
     }
@@ -33,14 +34,14 @@ pub fn repl() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
+    let mut vm = Vm::new();
     let mut file_buf = String::new();
     std::fs::File::open(path)?.read_to_string(&mut file_buf)?;
-    interpret(&file_buf)?;
+    interpret(&mut vm, &file_buf)?;
     Ok(())
 }
 
-fn interpret(s: &str) -> Result<(), InterpretError> {
+fn interpret(vm: &mut vm::Vm, s: &str) -> Result<(), InterpretError> {
     let chunk = compiler::compile(s).map_err(|_| InterpretError::CompileTime)?;
-    let mut vm = Vm::new(chunk);
-    vm.interpret()
+    vm.interpret(chunk)
 }

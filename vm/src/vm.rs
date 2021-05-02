@@ -4,6 +4,7 @@ use crate::{
     value::Value,
 };
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{self, Display},
 };
@@ -11,6 +12,7 @@ pub struct Vm {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 
 #[derive(Debug)]
@@ -44,15 +46,35 @@ macro_rules! number_binary_op {
 }
 
 impl Vm {
-    pub fn new(chunk: Chunk) -> Vm {
+    pub fn new() -> Vm {
         Vm {
-            chunk,
+            chunk: Chunk::new(),
             ip: 0,
             stack: Vec::new(),
+            globals: HashMap::new(),
         }
     }
 
-    pub fn interpret(&mut self) -> InterpretResult {
+    pub fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
+        self.chunk = chunk;
+        self.ip = 0;
+        self.run()
+    }
+
+    fn read_string(&mut self, idx: usize) -> String {
+        let s = self
+            .chunk
+            .get_mut_constant(idx as _)
+            .take()
+            .expect(&format!("vm::ReadString: None at idx {}", idx));
+        if let Value::Object(Object::String(s)) = s {
+            s
+        } else {
+            panic!("vm::ReadString: Value at idx {} was not a string", idx)
+        }
+    }
+
+    fn run(&mut self) -> InterpretResult {
         use OpCode::*;
         loop {
             let op = self.chunk.fetch(self.ip);
@@ -68,6 +90,49 @@ impl Vm {
                 Nil => self.stack.push(Value::Nil),
                 True => self.stack.push(Value::Boolean(true)),
                 False => self.stack.push(Value::Boolean(false)),
+                Pop => {
+                    let _ = self.stack.pop().expect("empty stack!");
+                }
+                GetGlobal(idx) => {
+                    let name = self.read_string(idx as _);
+                    match self.globals.get(&name) {
+                        Some(global_var) => {
+                            // cloning is OK - for basic values, they are already cheaply clonable
+                            // for later objects, they will probably be a Rc clone, or some other GC thing.
+                            self.stack.push(global_var.clone())
+                        }
+                        None => {
+                            return Err(InterpretError::Runtime(format!(
+                                "Undefined variable '{}'.",
+                                name
+                            )));
+                        }
+                    }
+                }
+                DefineGlobal(idx) => {
+                    let name = self.read_string(idx as _);
+                    // in the book, this first peeks to insert then pops after.
+                    // we cannot really do that, so we just pop it off now.
+                    // hopefully this won't cause a headache later.
+                    let val = self.stack.pop().expect("empty stack!");
+                    self.globals.insert(name, val);
+                    debug!("DefineGlobal::globals: {:?}", self.globals);
+                }
+                SetGlobal(idx) => {
+                    let name = self.read_string(idx as _);
+                    // Set is an expression and must leave a value on the stack, so do not pop.
+                    let v = self.stack.last().expect("empty stack!").clone();
+                    match self.globals.insert(name.clone(), v) {
+                        None => {
+                            self.globals.remove(&name);
+                            return Err(InterpretError::Runtime(format!(
+                                "Undefined variable '{}'.",
+                                name,
+                            )));
+                        }
+                        Some(_) => {}
+                    }
+                }
                 Equal => {
                     let b = self.stack.pop().expect("empty stack!");
                     let a = self.stack.last_mut().expect("empty stack!");
@@ -106,8 +171,11 @@ impl Vm {
                         _ => return Err(self.runtime_error("Operand must be a number.")),
                     }
                 }
-                Return => {
+                Print => {
                     println!("{}", self.stack.pop().expect("empty stack!"));
+                }
+                Return => {
+                    // Exit interpreter
                     return Ok(());
                 }
             }

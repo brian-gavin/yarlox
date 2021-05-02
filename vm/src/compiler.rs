@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub fn compile(source: &str) -> Result<Chunk, ()> {
-    let compiler = CompilerState::new(Parser::new(Scanner::new(source.into())));
+    let compiler = Compiler::new(Parser::new(Scanner::new(source.into())));
     compiler.compile()
 }
 
@@ -73,16 +73,108 @@ impl<'a> Parser<'a> {
     }
 }
 
-struct CompilerState<'a> {
-    parser: Parser<'a>,
-    current_chunk: Chunk,
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+enum Precedence {
+    None,
+    Assignment, // =
+    Or,         // or
+    And,        // and
+    Equality,   // == !=
+    Comparison, // < > <= >=
+    Term,       // + -
+    Factor,     // * /
+    Unary,      // ! -
+    Call,       // . ()
+    Primary,
 }
 
-impl<'a> CompilerState<'a> {
-    pub fn new(parser: Parser) -> CompilerState {
-        CompilerState {
+impl Precedence {
+    fn next_highest(self) -> Precedence {
+        match self {
+            Precedence::None => Precedence::Assignment,
+            Precedence::Assignment => Precedence::Or,
+            Precedence::Or => Precedence::And,
+            Precedence::And => Precedence::Equality,
+            Precedence::Equality => Precedence::Comparison,
+            Precedence::Comparison => Precedence::Term,
+            Precedence::Term => Precedence::Factor,
+            Precedence::Factor => Precedence::Unary,
+            Precedence::Unary => Precedence::Call,
+            Precedence::Call => Precedence::Primary,
+            Precedence::Primary => Precedence::Primary,
+        }
+    }
+}
+
+type ParseFn = fn(&mut Compiler, bool);
+
+struct ParseRule {
+    prefix: Option<ParseFn>,
+    infix: Option<ParseFn>,
+    precedence: Precedence,
+}
+
+impl ParseRule {
+    fn get_rule_opt(kind: Option<TokenKind>) -> ParseRule {
+        match kind {
+            Some(kind) => ParseRule::get_rule(kind),
+            None => ParseRule {
+                prefix: None,
+                infix: None,
+                precedence: Precedence::None,
+            },
+        }
+    }
+
+    fn get_rule(kind: TokenKind) -> ParseRule {
+        use TokenKind::*;
+        type ParseRule3Tuple = (Option<ParseFn>, Option<ParseFn>, Precedence);
+
+        let (prefix, infix, precedence): ParseRule3Tuple = match kind {
+            LeftParen => (Some(grouping), None, Precedence::None),
+            Minus => (Some(unary), Some(binary), Precedence::Term),
+            Plus => (None, Some(binary), Precedence::Term),
+            Slash | Star => (None, Some(binary), Precedence::Factor),
+            Bang => (Some(unary), None, Precedence::None),
+            BangEqual | EqualEqual => (None, Some(binary), Precedence::Equality),
+            Greater | GreaterEqual | Less | LessEqual => {
+                (None, Some(binary), Precedence::Comparison)
+            }
+            False | True | Nil => (Some(literal), None, Precedence::None),
+            Number => (Some(number), None, Precedence::None),
+            Str => (Some(string), None, Precedence::None),
+            Identifier => (Some(variable), None, Precedence::None),
+            _ => (None, None, Precedence::None),
+        };
+
+        ParseRule {
+            prefix,
+            infix,
+            precedence,
+        }
+    }
+}
+
+struct Local {
+    name: Token,
+    depth: usize,
+}
+
+struct Compiler<'a> {
+    parser: Parser<'a>,
+    current_chunk: Chunk,
+
+    locals: Vec<Local>,
+    scope_depth: usize,
+}
+
+impl<'a> Compiler<'a> {
+    pub fn new(parser: Parser) -> Compiler {
+        Compiler {
             parser,
             current_chunk: Chunk::new(),
+            locals: Vec::new(),
+            scope_depth: 0,
         }
     }
 
@@ -215,251 +307,169 @@ impl<'a> CompilerState<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-enum Precedence {
-    None,
-    Assignment, // =
-    Or,         // or
-    And,        // and
-    Equality,   // == !=
-    Comparison, // < > <= >=
-    Term,       // + -
-    Factor,     // * /
-    Unary,      // ! -
-    Call,       // . ()
-    Primary,
-}
-
-impl Precedence {
-    fn next_highest(self) -> Precedence {
-        match self {
-            Precedence::None => Precedence::Assignment,
-            Precedence::Assignment => Precedence::Or,
-            Precedence::Or => Precedence::And,
-            Precedence::And => Precedence::Equality,
-            Precedence::Equality => Precedence::Comparison,
-            Precedence::Comparison => Precedence::Term,
-            Precedence::Term => Precedence::Factor,
-            Precedence::Factor => Precedence::Unary,
-            Precedence::Unary => Precedence::Call,
-            Precedence::Call => Precedence::Primary,
-            Precedence::Primary => Precedence::Primary,
-        }
-    }
-}
-
-type ParseFn = fn(&mut CompilerState, bool);
-
-struct ParseRule {
-    prefix: Option<ParseFn>,
-    infix: Option<ParseFn>,
-    precedence: Precedence,
-}
-
-impl ParseRule {
-    fn get_rule_opt(kind: Option<TokenKind>) -> ParseRule {
-        match kind {
-            Some(kind) => ParseRule::get_rule(kind),
-            None => ParseRule {
-                prefix: None,
-                infix: None,
-                precedence: Precedence::None,
-            },
-        }
-    }
-
-    fn get_rule(kind: TokenKind) -> ParseRule {
-        use TokenKind::*;
-        type ParseRule3Tuple = (Option<ParseFn>, Option<ParseFn>, Precedence);
-
-        let (prefix, infix, precedence): ParseRule3Tuple = match kind {
-            LeftParen => (Some(grouping), None, Precedence::None),
-            Minus => (Some(unary), Some(binary), Precedence::Term),
-            Plus => (None, Some(binary), Precedence::Term),
-            Slash | Star => (None, Some(binary), Precedence::Factor),
-            Bang => (Some(unary), None, Precedence::None),
-            BangEqual | EqualEqual => (None, Some(binary), Precedence::Equality),
-            Greater | GreaterEqual | Less | LessEqual => {
-                (None, Some(binary), Precedence::Comparison)
-            }
-            False | True | Nil => (Some(literal), None, Precedence::None),
-            Number => (Some(number), None, Precedence::None),
-            Str => (Some(string), None, Precedence::None),
-            Identifier => (Some(variable), None, Precedence::None),
-            _ => (None, None, Precedence::None),
-        };
-
-        ParseRule {
-            prefix,
-            infix,
-            precedence,
-        }
-    }
-}
-
-fn emit_byte(state: &mut CompilerState, byte: OpCode) {
-    let line = state.previous().map(Token::line).unwrap_or_default();
-    let current_chunk = state.current_chunk_mut();
+fn emit_byte(compiler: &mut Compiler, byte: OpCode) {
+    let line = compiler.previous().map(Token::line).unwrap_or_default();
+    let current_chunk = compiler.current_chunk_mut();
     current_chunk.write_chunk(byte, line);
 }
 
-fn emit_bytes(state: &mut CompilerState, bytes: &[OpCode]) {
+fn emit_bytes(compiler: &mut Compiler, bytes: &[OpCode]) {
     for byte in bytes {
-        emit_byte(state, *byte);
+        emit_byte(compiler, *byte);
     }
 }
 
-fn emit_return(state: &mut CompilerState) {
-    emit_byte(state, OpCode::Return);
+fn emit_return(compiler: &mut Compiler) {
+    emit_byte(compiler, OpCode::Return);
 }
 
-fn emit_constant(state: &mut CompilerState, value: Value) {
-    let constant = OpCode::Constant(state.make_constant(value));
-    emit_byte(state, constant);
+fn emit_constant(compiler: &mut Compiler, value: Value) {
+    let constant = OpCode::Constant(compiler.make_constant(value));
+    emit_byte(compiler, constant);
 }
 
-fn binary(state: &mut CompilerState, _can_assign: bool) {
+fn binary(compiler: &mut Compiler, _can_assign: bool) {
     use TokenKind::*;
-    const EB: fn(&mut CompilerState, OpCode) = emit_byte;
-    const EBS: fn(&mut CompilerState, &[OpCode]) = emit_bytes;
+    const EB: fn(&mut Compiler, OpCode) = emit_byte;
+    const EBS: fn(&mut Compiler, &[OpCode]) = emit_bytes;
 
-    let op_token_kind = state.previous().map(Token::kind).unwrap();
+    let op_token_kind = compiler.previous().map(Token::kind).unwrap();
 
     let rule = ParseRule::get_rule(op_token_kind);
-    state.parse_precedence(rule.precedence.next_highest());
+    compiler.parse_precedence(rule.precedence.next_highest());
 
     match op_token_kind {
-        BangEqual => EBS(state, &[OpCode::Equal, OpCode::Not]),
-        EqualEqual => EB(state, OpCode::Equal),
-        Greater => EB(state, OpCode::Greater),
-        GreaterEqual => EBS(state, &[OpCode::Less, OpCode::Not]),
-        Less => EB(state, OpCode::Less),
-        LessEqual => EBS(state, &[OpCode::Greater, OpCode::Not]),
-        Plus => EB(state, OpCode::Add),
-        Minus => EB(state, OpCode::Subtract),
-        Star => EB(state, OpCode::Multiply),
-        Slash => EB(state, OpCode::Divide),
+        BangEqual => EBS(compiler, &[OpCode::Equal, OpCode::Not]),
+        EqualEqual => EB(compiler, OpCode::Equal),
+        Greater => EB(compiler, OpCode::Greater),
+        GreaterEqual => EBS(compiler, &[OpCode::Less, OpCode::Not]),
+        Less => EB(compiler, OpCode::Less),
+        LessEqual => EBS(compiler, &[OpCode::Greater, OpCode::Not]),
+        Plus => EB(compiler, OpCode::Add),
+        Minus => EB(compiler, OpCode::Subtract),
+        Star => EB(compiler, OpCode::Multiply),
+        Slash => EB(compiler, OpCode::Divide),
         _ => unreachable!(),
     };
 }
 
-fn literal(state: &mut CompilerState, _can_assign: bool) {
-    match state.previous().map(Token::kind) {
-        Some(TokenKind::False) => emit_byte(state, OpCode::False),
-        Some(TokenKind::Nil) => emit_byte(state, OpCode::Nil),
-        Some(TokenKind::True) => emit_byte(state, OpCode::True),
+fn literal(compiler: &mut Compiler, _can_assign: bool) {
+    match compiler.previous().map(Token::kind) {
+        Some(TokenKind::False) => emit_byte(compiler, OpCode::False),
+        Some(TokenKind::Nil) => emit_byte(compiler, OpCode::Nil),
+        Some(TokenKind::True) => emit_byte(compiler, OpCode::True),
         _ => unreachable!(),
     }
 }
 
-fn grouping(state: &mut CompilerState, _can_assign: bool) {
-    expression(state);
-    state.consume(
+fn grouping(compiler: &mut Compiler, _can_assign: bool) {
+    expression(compiler);
+    compiler.consume(
         Some(TokenKind::RightParen),
         "Expected ')' after expression.",
     );
 }
 
-fn number(state: &mut CompilerState, _can_assign: bool) {
-    let lexeme = state.previous().map(Token::lexeme).unwrap_or_default();
+fn number(compiler: &mut Compiler, _can_assign: bool) {
+    let lexeme = compiler.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
-    emit_constant(state, Value::Number(value));
+    emit_constant(compiler, Value::Number(value));
 }
 
-fn string(state: &mut CompilerState, _can_assign: bool) {
-    let s = state.previous().unwrap().lexeme().trim_matches('"');
+fn string(compiler: &mut Compiler, _can_assign: bool) {
+    let s = compiler.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
-    emit_constant(state, Value::Object(o));
+    emit_constant(compiler, Value::Object(o));
 }
 
-fn named_variable(state: &mut CompilerState, name: String, can_assign: bool) {
-    let arg = state.identifier_constant(name);
-    match (can_assign, state.current().map(Token::kind)) {
+fn named_variable(compiler: &mut Compiler, name: String, can_assign: bool) {
+    let arg = compiler.identifier_constant(name);
+    match (can_assign, compiler.current().map(Token::kind)) {
         (true, Some(TokenKind::Equal)) => {
-            state.parser.advance();
-            expression(state);
-            emit_byte(state, OpCode::SetGlobal(arg));
+            compiler.parser.advance();
+            expression(compiler);
+            emit_byte(compiler, OpCode::SetGlobal(arg));
         }
-        _ => emit_byte(state, OpCode::GetGlobal(arg)),
+        _ => emit_byte(compiler, OpCode::GetGlobal(arg)),
     }
 }
 
-fn variable(state: &mut CompilerState, can_assign: bool) {
+fn variable(compiler: &mut Compiler, can_assign: bool) {
     // altertaion from book: Token by ref not possible here, clone the lexeme name
-    let name = state
+    let name = compiler
         .previous()
         .map(Token::lexeme)
         .map(String::from)
         .unwrap_or_default();
-    named_variable(state, name, can_assign);
+    named_variable(compiler, name, can_assign);
 }
 
-fn unary(state: &mut CompilerState, _can_assign: bool) {
-    let op_token_kind = state.previous().map(Token::kind);
-    state.parse_precedence(Precedence::Unary);
+fn unary(compiler: &mut Compiler, _can_assign: bool) {
+    let op_token_kind = compiler.previous().map(Token::kind);
+    compiler.parse_precedence(Precedence::Unary);
     match op_token_kind {
-        Some(TokenKind::Minus) => emit_byte(state, OpCode::Negate),
-        Some(TokenKind::Bang) => emit_byte(state, OpCode::Not),
+        Some(TokenKind::Minus) => emit_byte(compiler, OpCode::Negate),
+        Some(TokenKind::Bang) => emit_byte(compiler, OpCode::Not),
         _ => unreachable!(),
     }
 }
 
-fn expression(state: &mut CompilerState) {
-    state.parse_precedence(Precedence::Assignment)
+fn expression(compiler: &mut Compiler) {
+    compiler.parse_precedence(Precedence::Assignment)
 }
 
-fn var_declaration(state: &mut CompilerState) {
-    let global = state.parse_variable("Expect variable name.");
-    match state.current().unwrap().kind() {
+fn var_declaration(compiler: &mut Compiler) {
+    let global = compiler.parse_variable("Expect variable name.");
+    match compiler.current().unwrap().kind() {
         TokenKind::Equal => {
-            state.parser.advance();
-            expression(state);
+            compiler.parser.advance();
+            expression(compiler);
         }
-        _ => emit_byte(state, OpCode::Nil),
+        _ => emit_byte(compiler, OpCode::Nil),
     }
-    state.consume(
+    compiler.consume(
         Some(TokenKind::Semicolon),
         "Expect ';' after variable declaration.",
     );
-    state.define_variable(global);
+    compiler.define_variable(global);
 }
 
-fn expression_statement(state: &mut CompilerState) {
-    expression(state);
-    state.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
-    emit_byte(state, OpCode::Pop)
+fn expression_statement(compiler: &mut Compiler) {
+    expression(compiler);
+    compiler.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
+    emit_byte(compiler, OpCode::Pop)
 }
 
-fn declaration(state: &mut CompilerState) {
-    match state.current().unwrap().kind() {
+fn declaration(compiler: &mut Compiler) {
+    match compiler.current().unwrap().kind() {
         TokenKind::Var => {
-            state.parser.advance();
-            var_declaration(state);
+            compiler.parser.advance();
+            var_declaration(compiler);
         }
-        _ => statement(state),
+        _ => statement(compiler),
     }
 
-    if state.parser.panic_mode {
-        state.synchronize();
+    if compiler.parser.panic_mode {
+        compiler.synchronize();
     }
 }
 
-fn statement(state: &mut CompilerState) {
-    debug!("statement: {:?}", state.current());
-    match state.current().map(Token::kind) {
+fn statement(compiler: &mut Compiler) {
+    debug!("statement: {:?}", compiler.current());
+    match compiler.current().map(Token::kind) {
         Some(TokenKind::Print) => {
-            state.parser.advance();
-            print_statement(state);
+            compiler.parser.advance();
+            print_statement(compiler);
         }
         Some(_) => {
-            expression_statement(state);
+            expression_statement(compiler);
         }
         None => (),
     }
 }
 
-fn print_statement(state: &mut CompilerState) {
-    expression(state);
-    state.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
-    emit_byte(state, OpCode::Print);
+fn print_statement(compiler: &mut Compiler) {
+    expression(compiler);
+    compiler.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
+    emit_byte(compiler, OpCode::Print);
 }

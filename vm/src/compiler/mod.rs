@@ -6,8 +6,8 @@ use crate::{
 };
 
 pub fn compile(source: &str) -> Result<Chunk, ()> {
-    let compiler = Compiler::new(Parser::new(Scanner::new(source.into())));
-    compiler.compile()
+    let c = Compiler::new(Parser::new(Scanner::new(source.into())));
+    c.compile()
 }
 
 struct Parser<'a> {
@@ -155,17 +155,9 @@ impl ParseRule {
     }
 }
 
-struct Local {
-    name: Token,
-    depth: usize,
-}
-
 struct Compiler<'a> {
     parser: Parser<'a>,
     current_chunk: Chunk,
-
-    locals: Vec<Local>,
-    scope_depth: usize,
 }
 
 impl<'a> Compiler<'a> {
@@ -173,8 +165,6 @@ impl<'a> Compiler<'a> {
         Compiler {
             parser,
             current_chunk: Chunk::new(),
-            locals: Vec::new(),
-            scope_depth: 0,
         }
     }
 
@@ -249,8 +239,27 @@ impl<'a> Compiler<'a> {
         self.identifier_constant(name)
     }
 
-    pub fn define_variable(&mut self, global: u8) {
-        emit_byte(self, OpCode::DefineGlobal(global));
+    pub fn define_variable(&mut self, line: usize, global: u8) {
+        self.emit_byte(line, OpCode::DefineGlobal(global));
+    }
+
+    fn emit_byte(&mut self, line: usize, byte: OpCode) {
+        self.current_chunk_mut().write_chunk(byte, line);
+    }
+
+    // fn emit_bytes(c: &mut Compiler, bytes: &[OpCode]) {
+    //     for byte in bytes {
+    //         emit_byte(c, *byte);
+    //     }
+    // }
+
+    pub fn emit_return(&mut self, line: usize) {
+        self.emit_byte(line, OpCode::Return);
+    }
+
+    fn emit_constant(&mut self, line: usize, value: Value) {
+        let constant = OpCode::Constant(self.make_constant(value));
+        self.emit_byte(line, constant);
     }
 
     pub fn compile(mut self) -> Result<Chunk, ()> {
@@ -307,169 +316,148 @@ impl<'a> Compiler<'a> {
     }
 }
 
-fn emit_byte(compiler: &mut Compiler, byte: OpCode) {
-    let line = compiler.previous().map(Token::line).unwrap_or_default();
-    let current_chunk = compiler.current_chunk_mut();
-    current_chunk.write_chunk(byte, line);
-}
-
-fn emit_bytes(compiler: &mut Compiler, bytes: &[OpCode]) {
-    for byte in bytes {
-        emit_byte(compiler, *byte);
-    }
-}
-
-fn emit_return(compiler: &mut Compiler) {
-    emit_byte(compiler, OpCode::Return);
-}
-
-fn emit_constant(compiler: &mut Compiler, value: Value) {
-    let constant = OpCode::Constant(compiler.make_constant(value));
-    emit_byte(compiler, constant);
-}
-
-fn binary(compiler: &mut Compiler, _can_assign: bool) {
+fn binary(c: &mut Compiler, _can_assign: bool) {
     use TokenKind::*;
     const EB: fn(&mut Compiler, OpCode) = emit_byte;
     const EBS: fn(&mut Compiler, &[OpCode]) = emit_bytes;
 
-    let op_token_kind = compiler.previous().map(Token::kind).unwrap();
+    let op_token_kind = c.previous().map(Token::kind).unwrap();
 
     let rule = ParseRule::get_rule(op_token_kind);
-    compiler.parse_precedence(rule.precedence.next_highest());
+    c.parse_precedence(rule.precedence.next_highest());
 
     match op_token_kind {
-        BangEqual => EBS(compiler, &[OpCode::Equal, OpCode::Not]),
-        EqualEqual => EB(compiler, OpCode::Equal),
-        Greater => EB(compiler, OpCode::Greater),
-        GreaterEqual => EBS(compiler, &[OpCode::Less, OpCode::Not]),
-        Less => EB(compiler, OpCode::Less),
-        LessEqual => EBS(compiler, &[OpCode::Greater, OpCode::Not]),
-        Plus => EB(compiler, OpCode::Add),
-        Minus => EB(compiler, OpCode::Subtract),
-        Star => EB(compiler, OpCode::Multiply),
-        Slash => EB(compiler, OpCode::Divide),
+        BangEqual => EBS(c, &[OpCode::Equal, OpCode::Not]),
+        EqualEqual => EB(c, OpCode::Equal),
+        Greater => EB(c, OpCode::Greater),
+        GreaterEqual => EBS(c, &[OpCode::Less, OpCode::Not]),
+        Less => EB(c, OpCode::Less),
+        LessEqual => EBS(c, &[OpCode::Greater, OpCode::Not]),
+        Plus => EB(c, OpCode::Add),
+        Minus => EB(c, OpCode::Subtract),
+        Star => EB(c, OpCode::Multiply),
+        Slash => EB(c, OpCode::Divide),
         _ => unreachable!(),
     };
 }
 
-fn literal(compiler: &mut Compiler, _can_assign: bool) {
-    match compiler.previous().map(Token::kind) {
-        Some(TokenKind::False) => emit_byte(compiler, OpCode::False),
-        Some(TokenKind::Nil) => emit_byte(compiler, OpCode::Nil),
-        Some(TokenKind::True) => emit_byte(compiler, OpCode::True),
+fn literal(c: &mut Compiler, _can_assign: bool) {
+    match c.previous().map(Token::kind) {
+        Some(TokenKind::False) => emit_byte(c, OpCode::False),
+        Some(TokenKind::Nil) => emit_byte(c, OpCode::Nil),
+        Some(TokenKind::True) => emit_byte(c, OpCode::True),
         _ => unreachable!(),
     }
 }
 
-fn grouping(compiler: &mut Compiler, _can_assign: bool) {
-    expression(compiler);
-    compiler.consume(
+fn grouping(c: &mut Compiler, _can_assign: bool) {
+    expression(c);
+    c.consume(
         Some(TokenKind::RightParen),
         "Expected ')' after expression.",
     );
 }
 
-fn number(compiler: &mut Compiler, _can_assign: bool) {
-    let lexeme = compiler.previous().map(Token::lexeme).unwrap_or_default();
+fn number(c: &mut Compiler, _can_assign: bool) {
+    let lexeme = c.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
-    emit_constant(compiler, Value::Number(value));
+    emit_constant(c, Value::Number(value));
 }
 
-fn string(compiler: &mut Compiler, _can_assign: bool) {
-    let s = compiler.previous().unwrap().lexeme().trim_matches('"');
+fn string(c: &mut Compiler, _can_assign: bool) {
+    let s = c.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
-    emit_constant(compiler, Value::Object(o));
+    emit_constant(c, Value::Object(o));
 }
 
-fn named_variable(compiler: &mut Compiler, name: String, can_assign: bool) {
-    let arg = compiler.identifier_constant(name);
-    match (can_assign, compiler.current().map(Token::kind)) {
+fn named_variable(c: &mut Compiler, name: String, can_assign: bool) {
+    let arg = c.identifier_constant(name);
+    match (can_assign, c.current().map(Token::kind)) {
         (true, Some(TokenKind::Equal)) => {
-            compiler.parser.advance();
-            expression(compiler);
-            emit_byte(compiler, OpCode::SetGlobal(arg));
+            c.parser.advance();
+            expression(c);
+            emit_byte(c, OpCode::SetGlobal(arg));
         }
-        _ => emit_byte(compiler, OpCode::GetGlobal(arg)),
+        _ => emit_byte(c, OpCode::GetGlobal(arg)),
     }
 }
 
-fn variable(compiler: &mut Compiler, can_assign: bool) {
+fn variable(c: &mut Compiler, can_assign: bool) {
     // altertaion from book: Token by ref not possible here, clone the lexeme name
-    let name = compiler
+    let name = c
         .previous()
         .map(Token::lexeme)
         .map(String::from)
         .unwrap_or_default();
-    named_variable(compiler, name, can_assign);
+    named_variable(c, name, can_assign);
 }
 
-fn unary(compiler: &mut Compiler, _can_assign: bool) {
-    let op_token_kind = compiler.previous().map(Token::kind);
-    compiler.parse_precedence(Precedence::Unary);
+fn unary(c: &mut Compiler, _can_assign: bool) {
+    let op_token_kind = c.previous().map(Token::kind);
+    c.parse_precedence(Precedence::Unary);
     match op_token_kind {
-        Some(TokenKind::Minus) => emit_byte(compiler, OpCode::Negate),
-        Some(TokenKind::Bang) => emit_byte(compiler, OpCode::Not),
+        Some(TokenKind::Minus) => emit_byte(c, OpCode::Negate),
+        Some(TokenKind::Bang) => emit_byte(c, OpCode::Not),
         _ => unreachable!(),
     }
 }
 
-fn expression(compiler: &mut Compiler) {
-    compiler.parse_precedence(Precedence::Assignment)
+fn expression(c: &mut Compiler) {
+    c.parse_precedence(Precedence::Assignment)
 }
 
-fn var_declaration(compiler: &mut Compiler) {
-    let global = compiler.parse_variable("Expect variable name.");
-    match compiler.current().unwrap().kind() {
+fn var_declaration(c: &mut Compiler) {
+    let global = c.parse_variable("Expect variable name.");
+    match c.current().unwrap().kind() {
         TokenKind::Equal => {
-            compiler.parser.advance();
-            expression(compiler);
+            c.parser.advance();
+            expression(c);
         }
-        _ => emit_byte(compiler, OpCode::Nil),
+        _ => emit_byte(c, OpCode::Nil),
     }
-    compiler.consume(
+    c.consume(
         Some(TokenKind::Semicolon),
         "Expect ';' after variable declaration.",
     );
-    compiler.define_variable(global);
+    c.define_variable(global);
 }
 
-fn expression_statement(compiler: &mut Compiler) {
-    expression(compiler);
-    compiler.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
-    emit_byte(compiler, OpCode::Pop)
+fn expression_statement(c: &mut Compiler) {
+    expression(c);
+    c.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
+    emit_byte(c, OpCode::Pop)
 }
 
-fn declaration(compiler: &mut Compiler) {
-    match compiler.current().unwrap().kind() {
+fn declaration(c: &mut Compiler) {
+    match c.current().unwrap().kind() {
         TokenKind::Var => {
-            compiler.parser.advance();
-            var_declaration(compiler);
+            c.parser.advance();
+            var_declaration(c);
         }
-        _ => statement(compiler),
+        _ => statement(c),
     }
 
-    if compiler.parser.panic_mode {
-        compiler.synchronize();
+    if c.parser.panic_mode {
+        c.synchronize();
     }
 }
 
-fn statement(compiler: &mut Compiler) {
-    debug!("statement: {:?}", compiler.current());
-    match compiler.current().map(Token::kind) {
+fn statement(c: &mut Compiler) {
+    debug!("statement: {:?}", c.current());
+    match c.current().map(Token::kind) {
         Some(TokenKind::Print) => {
-            compiler.parser.advance();
-            print_statement(compiler);
+            c.parser.advance();
+            print_statement(c);
         }
         Some(_) => {
-            expression_statement(compiler);
+            expression_statement(c);
         }
         None => (),
     }
 }
 
-fn print_statement(compiler: &mut Compiler) {
-    expression(compiler);
-    compiler.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
-    emit_byte(compiler, OpCode::Print);
+fn print_statement(c: &mut Compiler) {
+    expression(c);
+    c.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
+    emit_byte(c, OpCode::Print);
 }

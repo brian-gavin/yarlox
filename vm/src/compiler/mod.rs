@@ -239,27 +239,28 @@ impl<'a> Compiler<'a> {
         self.identifier_constant(name)
     }
 
-    pub fn define_variable(&mut self, line: usize, global: u8) {
-        self.emit_byte(line, OpCode::DefineGlobal(global));
+    pub fn define_variable(&mut self, global: u8) {
+        self.emit_byte(OpCode::DefineGlobal(global));
     }
 
-    fn emit_byte(&mut self, line: usize, byte: OpCode) {
+    fn emit_byte(&mut self, byte: OpCode) {
+        let line = self.previous().expect("expected a previous token").line();
         self.current_chunk_mut().write_chunk(byte, line);
     }
 
-    // fn emit_bytes(c: &mut Compiler, bytes: &[OpCode]) {
-    //     for byte in bytes {
-    //         emit_byte(c, *byte);
-    //     }
-    // }
-
-    pub fn emit_return(&mut self, line: usize) {
-        self.emit_byte(line, OpCode::Return);
+    fn emit_bytes(&mut self, bytes: &[OpCode]) {
+        for byte in bytes {
+            self.emit_byte(*byte);
+        }
     }
 
-    fn emit_constant(&mut self, line: usize, value: Value) {
+    pub fn emit_return(&mut self) {
+        self.emit_byte(OpCode::Return);
+    }
+
+    fn emit_constant(&mut self, value: Value) {
         let constant = OpCode::Constant(self.make_constant(value));
-        self.emit_byte(line, constant);
+        self.emit_byte(constant);
     }
 
     pub fn compile(mut self) -> Result<Chunk, ()> {
@@ -279,7 +280,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn end_compiler(&mut self) {
-        emit_return(self);
+        self.emit_return();
 
         if !self.parser.had_error {
             debug!("\n----- code -----\n{}", self.current_chunk())
@@ -318,8 +319,8 @@ impl<'a> Compiler<'a> {
 
 fn binary(c: &mut Compiler, _can_assign: bool) {
     use TokenKind::*;
-    const EB: fn(&mut Compiler, OpCode) = emit_byte;
-    const EBS: fn(&mut Compiler, &[OpCode]) = emit_bytes;
+    let eb = |c: &mut Compiler, b| c.emit_byte(b);
+    let ebs = |c: &mut Compiler, bs| c.emit_bytes(bs);
 
     let op_token_kind = c.previous().map(Token::kind).unwrap();
 
@@ -327,25 +328,25 @@ fn binary(c: &mut Compiler, _can_assign: bool) {
     c.parse_precedence(rule.precedence.next_highest());
 
     match op_token_kind {
-        BangEqual => EBS(c, &[OpCode::Equal, OpCode::Not]),
-        EqualEqual => EB(c, OpCode::Equal),
-        Greater => EB(c, OpCode::Greater),
-        GreaterEqual => EBS(c, &[OpCode::Less, OpCode::Not]),
-        Less => EB(c, OpCode::Less),
-        LessEqual => EBS(c, &[OpCode::Greater, OpCode::Not]),
-        Plus => EB(c, OpCode::Add),
-        Minus => EB(c, OpCode::Subtract),
-        Star => EB(c, OpCode::Multiply),
-        Slash => EB(c, OpCode::Divide),
+        BangEqual => ebs(c, &[OpCode::Equal, OpCode::Not]),
+        EqualEqual => eb(c, OpCode::Equal),
+        Greater => eb(c, OpCode::Greater),
+        GreaterEqual => ebs(c, &[OpCode::Less, OpCode::Not]),
+        Less => eb(c, OpCode::Less),
+        LessEqual => ebs(c, &[OpCode::Greater, OpCode::Not]),
+        Plus => eb(c, OpCode::Add),
+        Minus => eb(c, OpCode::Subtract),
+        Star => eb(c, OpCode::Multiply),
+        Slash => eb(c, OpCode::Divide),
         _ => unreachable!(),
     };
 }
 
 fn literal(c: &mut Compiler, _can_assign: bool) {
     match c.previous().map(Token::kind) {
-        Some(TokenKind::False) => emit_byte(c, OpCode::False),
-        Some(TokenKind::Nil) => emit_byte(c, OpCode::Nil),
-        Some(TokenKind::True) => emit_byte(c, OpCode::True),
+        Some(TokenKind::False) => c.emit_byte(OpCode::False),
+        Some(TokenKind::Nil) => c.emit_byte(OpCode::Nil),
+        Some(TokenKind::True) => c.emit_byte(OpCode::True),
         _ => unreachable!(),
     }
 }
@@ -361,13 +362,13 @@ fn grouping(c: &mut Compiler, _can_assign: bool) {
 fn number(c: &mut Compiler, _can_assign: bool) {
     let lexeme = c.previous().map(Token::lexeme).unwrap_or_default();
     let value = lexeme.parse().expect("Invalid number :(");
-    emit_constant(c, Value::Number(value));
+    c.emit_constant(Value::Number(value));
 }
 
 fn string(c: &mut Compiler, _can_assign: bool) {
     let s = c.previous().unwrap().lexeme().trim_matches('"');
     let o = Object::String(s.to_string());
-    emit_constant(c, Value::Object(o));
+    c.emit_constant(Value::Object(o));
 }
 
 fn named_variable(c: &mut Compiler, name: String, can_assign: bool) {
@@ -376,9 +377,9 @@ fn named_variable(c: &mut Compiler, name: String, can_assign: bool) {
         (true, Some(TokenKind::Equal)) => {
             c.parser.advance();
             expression(c);
-            emit_byte(c, OpCode::SetGlobal(arg));
+            c.emit_byte(OpCode::SetGlobal(arg));
         }
-        _ => emit_byte(c, OpCode::GetGlobal(arg)),
+        _ => c.emit_byte(OpCode::GetGlobal(arg)),
     }
 }
 
@@ -396,8 +397,8 @@ fn unary(c: &mut Compiler, _can_assign: bool) {
     let op_token_kind = c.previous().map(Token::kind);
     c.parse_precedence(Precedence::Unary);
     match op_token_kind {
-        Some(TokenKind::Minus) => emit_byte(c, OpCode::Negate),
-        Some(TokenKind::Bang) => emit_byte(c, OpCode::Not),
+        Some(TokenKind::Minus) => c.emit_byte(OpCode::Negate),
+        Some(TokenKind::Bang) => c.emit_byte(OpCode::Not),
         _ => unreachable!(),
     }
 }
@@ -413,7 +414,7 @@ fn var_declaration(c: &mut Compiler) {
             c.parser.advance();
             expression(c);
         }
-        _ => emit_byte(c, OpCode::Nil),
+        _ => c.emit_byte(OpCode::Nil),
     }
     c.consume(
         Some(TokenKind::Semicolon),
@@ -425,7 +426,7 @@ fn var_declaration(c: &mut Compiler) {
 fn expression_statement(c: &mut Compiler) {
     expression(c);
     c.consume(Some(TokenKind::Semicolon), "Expect ';' after expression.");
-    emit_byte(c, OpCode::Pop)
+    c.emit_byte(OpCode::Pop)
 }
 
 fn declaration(c: &mut Compiler) {
@@ -459,5 +460,5 @@ fn statement(c: &mut Compiler) {
 fn print_statement(c: &mut Compiler) {
     expression(c);
     c.consume(Some(TokenKind::Semicolon), "Expect ';' after value.");
-    emit_byte(c, OpCode::Print);
+    c.emit_byte(OpCode::Print);
 }
